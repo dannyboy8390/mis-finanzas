@@ -356,6 +356,13 @@
     background:var(--danger);color:#fff;padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.4;
     box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:1000;opacity:0;transition:transform .25s, opacity .25s;pointer-events:none;}
   .toast.show{transform:translate(-50%, 0);opacity:1;}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(20,20,20,.6);display:none;align-items:center;justify-content:center;padding:16px;z-index:2000;}
+  .modal-backdrop.show{display:flex;}
+  .modal{background:#fff;border-radius:12px;border-top:6px solid var(--danger);padding:22px 20px 18px;max-width:400px;width:100%;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.35);}
+  .modal-icon{font-size:40px;line-height:1;margin-bottom:8px;}
+  .modal h3{font-family:'Spectral',serif;font-size:20px;color:var(--danger);margin:0 0 10px;}
+  .modal p{font-size:15px;line-height:1.5;color:var(--ink);margin:0 0 18px;}
+  .modal button{width:100%;padding:12px;border:none;border-radius:6px;background:var(--danger);color:#fff;font-size:15px;font-weight:600;cursor:pointer;}
 
   /* Gastos principales: lista simple, sin barras */
   #breakdown-body{border:1px solid var(--paper-line);border-radius:6px;background:#fff;overflow:hidden;}
@@ -379,6 +386,14 @@
 </head>
 <body>
 <div id="toast" class="toast" role="alert" aria-live="assertive"></div>
+<div id="block-modal" class="modal-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="block-title" aria-describedby="block-text">
+  <div class="modal">
+    <div class="modal-icon">⛔</div>
+    <h3 id="block-title">Movimiento bloqueado</h3>
+    <p id="block-text"></p>
+    <button type="button" id="block-ok">Entendido</button>
+  </div>
+</div>
 <div class="wrap">
 
   <header class="masthead">
@@ -783,6 +798,17 @@ function showToast(text){
   toastTimer = setTimeout(() => t.classList.remove('show'), 5000);
 }
 
+// Ventana de bloqueo en el centro de la pantalla: no se cierra hasta tocar "Entendido"
+function showBlock(title, text){
+  document.getElementById('block-title').textContent = title;
+  document.getElementById('block-text').textContent = text;
+  document.getElementById('block-modal').classList.add('show');
+  document.getElementById('block-ok').focus();
+}
+document.getElementById('block-ok').addEventListener('click', () => {
+  document.getElementById('block-modal').classList.remove('show');
+});
+
 // Saldo disponible del banco de origen, debajo de "Desde"
 function updateAvailHint(){
   const hint = document.getElementById('f-from-avail');
@@ -874,7 +900,9 @@ function render(){
         const after = entries.filter(e => e.id !== id);
         const neg = bankInNegative(after);
         if(neg && !bankInNegative(entries)){
-          showToast(`⚠ No se puede borrar: ${neg} quedaría en negativo (${fmt(bankBalances(after)[neg])}). Primero borra las transferencias que salieron de ese banco.`);
+          showBlock('No se puede borrar',
+            `Si borras este movimiento, ${neg} quedaría en ${fmt(bankBalances(after)[neg])}. ` +
+            `Primero borra las transferencias que salieron de ese banco.`);
           return;
         }
         entries = after;
@@ -1013,9 +1041,10 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
   if(isTransfer){
     const avail = bankBalances()[fFrom.value] || 0;
     if(cents(amount) > cents(avail)){
-      const msg = `⚠ Saldo insuficiente en ${fFrom.value}: tienes ${fmt(avail)} disponibles y quieres transferir ${fmt(amount)}. La transferencia NO se guardó.`;
-      showFormMsg(msg);
-      showToast(msg);
+      showFormMsg(`⚠ Saldo insuficiente en ${fFrom.value}. La transferencia NO se guardó.`);
+      showBlock('Saldo insuficiente',
+        `${fFrom.value} tiene ${fmt(avail)} disponibles y quieres transferir ${fmt(amount)}. ` +
+        `La transferencia NO se guardó. Escribe un monto igual o menor a ${fmt(Math.max(avail, 0))}.`);
       return;
     }
   }
@@ -1260,7 +1289,11 @@ async function flushQueue(){
     if(!q.length) return result;
     const err = await runOp(q[0]);
     if(err && isNetErr(err)) return 'offline';
-    if(err){ console.error('Nube:', err); cloudError = err.message; result = 'error'; }
+    if(err && /SALDO_INSUFICIENTE/.test(err.message || '')){
+      // La nube rechazo el cambio: se descarta y al sincronizar vuelven los saldos correctos
+      showBlock('Rechazado por la nube',
+        'Este cambio dejaba un banco con saldo negativo y no se guardó. Tus saldos se restauraron con los datos de la nube.');
+    }else if(err){ console.error('Nube:', err); cloudError = err.message; result = 'error'; }
     const rest = loadQueue(); rest.shift(); saveQueue(rest);
   }
 }
