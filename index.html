@@ -335,8 +335,18 @@
   .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   table#ledger td, table#ledger th{white-space:nowrap;}
 
+  /* Resumen compacto: tarjetas mas bajas y letra mas pequena */
+  .summary{gap:8px;margin-bottom:20px;}
+  .sum-card{padding:10px 12px;}
+  .sum-card .label{font-size:10px;margin-bottom:3px;}
+  .sum-card .value{font-size:17px;}
+
   @media (max-width:640px){
     .wrap{padding:20px 16px 48px;}
+    .summary{gap:6px;}
+    .sum-card{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;}
+    .sum-card .label{margin-bottom:0;}
+    .sum-card .value{font-size:15px;white-space:nowrap;}
     .bd-row{grid-template-columns:90px 1fr 90px;}
     .summary{grid-template-columns:1fr;}
     .form-grid{grid-template-columns:1fr;}
