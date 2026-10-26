@@ -138,6 +138,15 @@
   }
   .toggle-btn.active-income{background:var(--income-bg);border-color:var(--income);color:var(--income);}
   .toggle-btn.active-expense{background:var(--expense-bg);border-color:var(--expense);color:var(--expense);}
+  .toggle-btn.active-transfer{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);}
+  .banks-card{background:var(--card);border:1px solid var(--paper-line);border-radius:6px;padding:16px 18px;margin-bottom:24px;}
+  .banks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .bank{border:1px solid var(--paper-line);border-radius:6px;padding:10px;background:#fff;min-width:0;}
+  .bank .label{font-size:11px;color:var(--ink-soft);margin-bottom:4px;line-height:1.25;}
+  .bank .value{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500;}
+  .banks-note{font-size:11px;color:var(--ink-faint);margin:10px 0 0;}
+  .amt-transfer{color:var(--accent);}
+  .row-sub{display:block;font-family:'Inter',sans-serif;font-size:11px;color:var(--ink-faint);margin-top:2px;}
   #error-msg{font-size:12px;color:var(--danger);margin:0 0 8px;display:none;}
   button#add-btn{
     width:100%;
@@ -391,6 +400,12 @@
       </div>
     </div>
 
+    <div class="banks-card">
+      <div class="ledger-head"><h2>Saldos por banco</h2></div>
+      <div class="banks" id="banks"></div>
+      <p class="banks-note">Ingresos que entraron a cada banco, más o menos lo que transferiste entre ellos.</p>
+    </div>
+
     <div class="breakdown" id="breakdown-section">
       <div class="ledger-head">
         <h2>Gastos principales del mes</h2>
@@ -404,13 +419,24 @@
       <div class="toggle-row">
         <div class="toggle-btn" id="btn-income" data-type="ingreso">Ingreso</div>
         <div class="toggle-btn" id="btn-expense" data-type="gasto">Gasto</div>
+        <div class="toggle-btn" id="btn-transfer" data-type="transferencia">Transferencia</div>
+      </div>
+      <div class="form-grid" id="bank-fields" style="display:none;">
+        <div class="field">
+          <label for="f-from" id="f-from-label">Banco</label>
+          <select id="f-from"></select>
+        </div>
+        <div class="field" id="f-to-wrap">
+          <label for="f-to">Hacia</label>
+          <select id="f-to"></select>
+        </div>
       </div>
       <div class="form-grid">
         <div class="field">
           <label for="f-date">Fecha</label>
           <input type="date" id="f-date">
         </div>
-        <div class="field">
+        <div class="field" id="f-cat-wrap">
           <label for="f-cat">Categoria</label>
           <div class="cat-row">
             <select id="f-cat"></select>
@@ -677,20 +703,65 @@ function showFormMsg(text, ok){
   m.style.display = text ? 'block' : 'none';
 }
 
+// ----- Bancos: los ingresos entran a un banco y luego se reparten con transferencias -----
+const BANKS = ['Banco Guayaquil', 'Produbanco', 'Banco Pichincha'];
+const DEFAULT_BANK = 'Banco Guayaquil';
+const fFrom = document.getElementById('f-from');
+const fTo = document.getElementById('f-to');
+fFrom.innerHTML = fTo.innerHTML = BANKS.map(b => `<option value="${b}">${b}</option>`).join('');
+fFrom.value = DEFAULT_BANK;
+fTo.value = BANKS[1];
+
+function bankBalances(){
+  const bal = Object.fromEntries(BANKS.map(b => [b, 0]));
+  entries.forEach(e => {
+    if(e.type === 'ingreso'){
+      const acc = e.account in bal ? e.account : DEFAULT_BANK;  // ingresos antiguos sin banco
+      bal[acc] += e.amount;
+    }
+    if(e.type === 'transferencia'){
+      if(e.account in bal) bal[e.account] -= e.amount;
+      if(e.toAccount in bal) bal[e.toAccount] += e.amount;
+    }
+  });
+  return bal;
+}
+
+function renderBanks(){
+  const bal = bankBalances();
+  document.getElementById('banks').innerHTML = BANKS.map(b => `
+    <div class="bank">
+      <div class="label">${escapeHtml(b)}</div>
+      <div class="value" style="color:${bal[b] < 0 ? 'var(--danger)' : 'var(--ink)'}">${fmt(bal[b])}</div>
+    </div>`).join('');
+}
+
 function setType(type){
   currentType = type;
   document.getElementById('btn-income').classList.toggle('active-income', type==='ingreso');
   document.getElementById('btn-expense').classList.toggle('active-expense', type==='gasto');
+  document.getElementById('btn-transfer').classList.toggle('active-transfer', type==='transferencia');
+  // Ingreso: elegir banco. Transferencia: desde/hacia, sin categoria. Gasto: sin banco.
+  document.getElementById('bank-fields').style.display = type === 'gasto' ? 'none' : 'grid';
+  document.getElementById('f-to-wrap').style.display = type === 'transferencia' ? 'flex' : 'none';
+  document.getElementById('f-from-label').textContent = type === 'transferencia' ? 'Desde' : 'Banco';
+  document.getElementById('f-cat-wrap').style.display = type === 'transferencia' ? 'none' : 'flex';
+  if(type === 'transferencia' && fTo.value === fFrom.value){
+    fTo.value = BANKS.find(b => b !== fFrom.value);
+  }
+  showFormMsg('');
 }
 document.getElementById('btn-income').addEventListener('click', () => setType('ingreso'));
 document.getElementById('btn-expense').addEventListener('click', () => setType('gasto'));
+document.getElementById('btn-transfer').addEventListener('click', () => setType('transferencia'));
 setType('gasto');
 
 function render(){
   const sorted = [...entries].sort((a,b) => a.date.localeCompare(b.date) || a.id - b.id);
   let running = 0;
   const rows = sorted.map(e => {
-    running += e.type === 'ingreso' ? e.amount : -e.amount;
+    // Las transferencias solo mueven dinero entre bancos: no cambian el saldo total
+    running += e.type === 'ingreso' ? e.amount : e.type === 'gasto' ? -e.amount : 0;
     return {...e, balanceAfter: running};
   });
 
@@ -711,11 +782,15 @@ function render(){
     emptyState.style.display = 'none';
     visible.slice().reverse().forEach(e => {
       const tr = document.createElement('tr');
+      const isT = e.type === 'transferencia';
+      const sub = isT ? `${e.account} → ${e.toAccount}` : (e.type === 'ingreso' && e.account ? e.account : '');
+      const amtClass = isT ? 'amt-transfer' : e.type === 'ingreso' ? 'amt-income' : 'amt-expense';
+      const sign = isT ? '↔ ' : e.type === 'ingreso' ? '+' : '-';
       tr.innerHTML = `
         <td>${e.date}</td>
-        <td><span class="cat-badge">${escapeHtml(e.category)}</span></td>
+        <td><span class="cat-badge">${escapeHtml(isT ? 'Transferencia' : e.category)}</span>${sub ? `<span class="row-sub">${escapeHtml(sub)}</span>` : ''}</td>
         <td>${escapeHtml(e.desc || '-')}</td>
-        <td class="num ${e.type==='ingreso' ? 'amt-income' : 'amt-expense'}">${e.type==='ingreso' ? '+' : '-'}${fmt(e.amount)}</td>
+        <td class="num ${amtClass}">${sign}${fmt(e.amount)}</td>
         <td class="num">${fmt(e.balanceAfter)}</td>
         <td><button class="del-btn" data-id="${e.id}" aria-label="Eliminar" title="Eliminar este movimiento">${TRASH_ICON}</button></td>
       `;
@@ -743,6 +818,7 @@ function render(){
   document.getElementById('sum-balance').textContent = fmt(overallBalance);
 
   renderBreakdown(monthEntries.filter(e => e.type==='gasto'), totalExpense);
+  renderBanks();
   updateBackupInfo();
 }
 
@@ -843,14 +919,19 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
   errorMsg.style.display = 'none';
 
   const date = document.getElementById('f-date').value;
+  const isTransfer = currentType === 'transferencia';
   const catValue = catSelect.value;
-  const category = catValue === NEW_OPT ? '' : catValue;
+  const category = isTransfer ? 'Transferencia' : (catValue === NEW_OPT ? '' : catValue);
   const amountRaw = document.getElementById('f-amount').value;
   const desc = document.getElementById('f-desc').value.trim();
   const amount = parseFloat(amountRaw);
 
   if(!date || !category || !amountRaw || isNaN(amount) || amount <= 0){
-    showFormMsg('Completa fecha, categoria y un monto valido mayor a cero.');
+    showFormMsg(isTransfer ? 'Completa fecha y un monto valido mayor a cero.' : 'Completa fecha, categoria y un monto valido mayor a cero.');
+    return;
+  }
+  if(isTransfer && fFrom.value === fTo.value){
+    showFormMsg('Elige dos bancos distintos para la transferencia.');
     return;
   }
 
@@ -859,6 +940,8 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
     date, category, desc, amount,
     type: currentType
   };
+  if(currentType === 'ingreso') entry.account = fFrom.value;
+  if(isTransfer){ entry.account = fFrom.value; entry.toAccount = fTo.value; }
   entries.push(entry);
   await saveEntries();
   render();
@@ -963,7 +1046,7 @@ document.querySelectorAll('.backup-dl').forEach(b => b.addEventListener('click',
 function isValidEntry(e){
   return e && typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)
     && typeof e.amount === 'number' && isFinite(e.amount)
-    && (e.type === 'ingreso' || e.type === 'gasto')
+    && (e.type === 'ingreso' || e.type === 'gasto' || e.type === 'transferencia')
     && typeof e.category === 'string';
 }
 
@@ -1007,7 +1090,8 @@ document.getElementById('restore-yes').addEventListener('click', async () => {
   pendingRestore = null;
   entries = data.entries.map((e, i) => ({
     id: typeof e.id === 'number' ? e.id : Date.now() + i,
-    date: e.date, category: e.category, desc: e.desc || '', amount: e.amount, type: e.type
+    date: e.date, category: e.category, desc: e.desc || '', amount: e.amount, type: e.type,
+    account: e.account || '', toAccount: e.toAccount || ''
   }));
   if(Array.isArray(data.categories) && data.categories.length){
     categories = data.categories.filter(c => typeof c === 'string');
@@ -1052,8 +1136,10 @@ function cloudQueue(...ops){
   flushAndPull();
 }
 
-const toCloud = e => ({ user_id: cloudUser.id, id: e.id, fecha: e.date, categoria: e.category, descripcion: e.desc || '', monto: e.amount, tipo: e.type });
-const fromCloud = r => ({ id: Number(r.id), date: r.fecha, category: r.categoria, desc: r.descripcion || '', amount: Number(r.monto), type: r.tipo });
+const toCloud = e => ({ user_id: cloudUser.id, id: e.id, fecha: e.date, categoria: e.category, descripcion: e.desc || '', monto: e.amount, tipo: e.type,
+  cuenta: e.account || (e.type === 'ingreso' ? DEFAULT_BANK : null), cuenta_destino: e.toAccount || null });
+const fromCloud = r => ({ id: Number(r.id), date: r.fecha, category: r.categoria, desc: r.descripcion || '', amount: Number(r.monto), type: r.tipo,
+  account: r.cuenta || '', toAccount: r.cuenta_destino || '' });
 
 function isNetErr(err){
   return !navigator.onLine || /fetch|network|load failed|timeout/i.test((err && err.message) || '');
@@ -1107,7 +1193,7 @@ async function fetchAll(table, columns, orderCol){
 // Trae de la nube la version mas reciente (incluye cambios hechos en otros dispositivos)
 async function pullFromCloud(){
   const [rows, cats] = await Promise.all([
-    fetchAll('movimientos', 'id,fecha,categoria,descripcion,monto,tipo', 'fecha'),
+    fetchAll('movimientos', 'id,fecha,categoria,descripcion,monto,tipo,cuenta,cuenta_destino', 'fecha'),
     fetchAll('categorias', 'nombre,posicion', 'posicion')
   ]);
   if(loadQueue().length) return;  // llegaron cambios nuevos mientras tanto: se aplican en la siguiente vuelta
