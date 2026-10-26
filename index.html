@@ -341,13 +341,28 @@
   .sum-card .label{font-size:10px;margin-bottom:3px;}
   .sum-card .value{font-size:17px;}
 
+  /* Formulario: ningun campo puede ser mas ancho que la pantalla */
+  form#entry-form{overflow:hidden;}
+  .form-grid > *, .field{min-width:0;}
+  .field input, .field select{width:100%;max-width:100%;min-width:0;display:block;height:40px;}
+  .field input[type="date"]{-webkit-appearance:none;appearance:none;text-align:left;}
+  .field input[type="date"]::-webkit-date-and-time-value{text-align:left;}
+  .cat-row .cat-icon-btn{height:40px;}
+
+  /* Gastos principales: lista simple, sin barras */
+  #breakdown-body{border:1px solid var(--paper-line);border-radius:6px;background:#fff;overflow:hidden;}
+  #breakdown-body:empty{display:none;}
+  .bd-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:10px 14px;border-bottom:1px solid var(--paper-line);}
+  .bd-row:last-child{border-bottom:none;}
+  .bd-cat{min-width:0;white-space:normal;}
+  .bd-amt{white-space:nowrap;}
+
   @media (max-width:640px){
     .wrap{padding:20px 16px 48px;}
     .summary{gap:6px;}
     .sum-card{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;}
     .sum-card .label{margin-bottom:0;}
     .sum-card .value{font-size:15px;white-space:nowrap;}
-    .bd-row{grid-template-columns:90px 1fr 90px;}
     .summary{grid-template-columns:1fr;}
     .form-grid{grid-template-columns:1fr;}
     header.masthead{flex-direction:column;align-items:flex-start;gap:6px;}
@@ -907,16 +922,13 @@ function renderBreakdown(expenseEntries, totalExpense){
   });
 
   const sorted = Object.entries(byCategory).sort((a,b) => b[1] - a[1]);
-  const maxAmount = sorted[0][1];
 
   sorted.forEach(([cat, amount]) => {
     const pct = totalExpense ? (amount / totalExpense * 100) : 0;
-    const widthPct = maxAmount ? (amount / maxAmount * 100) : 0;
     const row = document.createElement('div');
     row.className = 'bd-row';
     row.innerHTML = `
       <div class="bd-cat">${escapeHtml(cat)}</div>
-      <div class="bd-track"><div class="bd-fill" style="width:${widthPct.toFixed(1)}%;"></div></div>
       <div class="bd-amt">${fmt(amount)}<span class="bd-pct">${pct.toFixed(0)}%</span></div>
     `;
     body.appendChild(row);
