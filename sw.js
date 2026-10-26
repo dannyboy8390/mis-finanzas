@@ -1,5 +1,7 @@
-const CACHE_NAME = 'mis-finanzas-v1';
+// Cambia este numero cada vez que subas una version nueva
+const CACHE_NAME = 'mis-finanzas-v8';
 const FILES_TO_CACHE = [
+  './',
   './index.html',
   './manifest.json',
   './icon-192.png',
@@ -22,10 +24,18 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Primero intenta internet (para recibir actualizaciones); si no hay conexion, usa la copia guardada
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request);
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok && new URL(event.request.url).origin === self.location.origin) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });

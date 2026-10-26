@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mis finanzas</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
@@ -272,7 +273,45 @@
   }
   #loading{text-align:center;padding:30px 0;color:var(--ink-faint);font-size:13px;}
 
+  .cat-row{display:flex;gap:6px;}
+  .cat-row select{flex:1;min-width:0;}
+  .cat-icon-btn{background:#fff;border:1px solid var(--paper-line);border-radius:4px;color:var(--ink-faint);cursor:pointer;padding:0 10px;font-size:12px;flex-shrink:0;}
+  .cat-icon-btn:hover{color:var(--danger);border-color:var(--danger);}
+  .cat-icon-btn.armed{background:var(--danger);border-color:var(--danger);color:#fff;}
+  #reset-btn.armed{color:var(--danger);font-weight:600;}
+  .cat-new{display:flex;gap:6px;margin-top:6px;}
+  .cat-new input{flex:1;min-width:0;}
+  #cat-new-save{background:var(--ink);color:var(--paper);border:none;border-radius:4px;padding:0 14px;cursor:pointer;font-size:13px;font-weight:500;}
+
+  .backup-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--accent-bg);border:1px solid var(--accent);color:var(--ink);border-radius:6px;padding:12px 14px;margin-bottom:20px;font-size:13px;}
+  .backup-banner button{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:8px 12px;font-size:13px;font-weight:500;cursor:pointer;}
+  .backup-card{background:var(--card);border:1px solid var(--paper-line);border-radius:6px;padding:18px;margin-top:32px;}
+  .backup-card h2{font-family:'Spectral',serif;font-size:18px;font-weight:600;margin:0 0 8px;}
+  .backup-help{font-size:13px;color:var(--ink-soft);margin:0 0 8px;line-height:1.45;}
+  .backup-last{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);margin:0 0 12px;}
+  .backup-actions{display:flex;gap:8px;flex-wrap:wrap;}
+  .backup-actions button{flex:1;min-width:140px;padding:10px;border-radius:4px;font-size:14px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;}
+  .backup-primary{background:var(--ink);color:var(--paper);border:none;}
+  .backup-secondary{background:#fff;color:var(--ink);border:1px solid var(--paper-line);}
+  .backup-danger{background:var(--danger);color:#fff;border:none;}
+  .restore-confirm{margin-top:12px;padding:12px;border:1px solid var(--danger);border-radius:6px;background:var(--expense-bg);font-size:13px;}
+  .restore-confirm p{margin:0 0 10px;}
+  .backup-msg{font-size:13px;margin:10px 0 0;}
+  .backup-msg:empty{display:none;}
+
+  .filter-bar{margin-bottom:12px;}
+  .filter-bar .toggle-row{margin-bottom:8px;}
+  .filter-btn.active{background:var(--ink);border-color:var(--ink);color:var(--paper);}
+  .filter-bar input, .filter-bar select{width:100%;margin-bottom:8px;}
+  .filter-bar .filter-btn{padding:9px 4px;font-size:12px;}
+  #filter-summary{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:4px 14px;}
+  #filter-summary:empty{display:none;}
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  table#ledger td, table#ledger th{white-space:nowrap;}
+
   @media (max-width:640px){
+    .wrap{padding:20px 16px 48px;}
+    .bd-row{grid-template-columns:90px 1fr 90px;}
     .summary{grid-template-columns:1fr;}
     .form-grid{grid-template-columns:1fr;}
     header.masthead{flex-direction:column;align-items:flex-start;gap:6px;}
@@ -284,7 +323,7 @@
 
   <header class="masthead">
     <div>
-      <h1>Mis finanzas</h1>
+      <h1 style="color:#C62828;text-transform:uppercase;">FINANZAS DANIEL</h1>
       <p>Libro de ingresos y gastos</p>
     </div>
     <div id="hoy"></div>
@@ -293,6 +332,11 @@
   <div id="loading">Cargando tus movimientos...</div>
 
   <div id="app" style="display:none;">
+    <div id="backup-banner" class="backup-banner" style="display:none;">
+      <span id="backup-banner-text"></span>
+      <button type="button" class="backup-dl">Descargar respaldo</button>
+    </div>
+
     <div class="summary">
       <div class="sum-card income">
         <div class="label">Ingresos del mes</div>
@@ -329,7 +373,14 @@
         </div>
         <div class="field">
           <label for="f-cat">Categoria</label>
-          <input type="text" id="f-cat" placeholder="Colegio, sueldo, comida...">
+          <div class="cat-row">
+            <select id="f-cat"></select>
+            <button type="button" id="cat-del" class="cat-icon-btn" aria-label="Quitar categoria" title="Quitar esta categoría de la lista">Quitar</button>
+          </div>
+          <div class="cat-new" id="cat-new" style="display:none;">
+            <input type="text" id="cat-new-input" placeholder="Nueva categoría">
+            <button type="button" id="cat-new-save">Agregar</button>
+          </div>
         </div>
         <div class="field">
           <label for="f-amount">Monto</label>
@@ -348,6 +399,20 @@
       <h2>Movimientos</h2>
       <button id="reset-btn">Borrar todo</button>
     </div>
+    <div class="filter-bar">
+      <div class="toggle-row">
+        <div class="toggle-btn filter-btn" data-mode="todos">Todos</div>
+        <div class="toggle-btn filter-btn" data-mode="mes">Por mes</div>
+        <div class="toggle-btn filter-btn" data-mode="dia">Por día</div>
+        <div class="toggle-btn filter-btn" data-mode="anio">Por año</div>
+      </div>
+      <select id="flt-year" style="display:none;"></select>
+      <input type="month" id="flt-month" style="display:none;">
+      <input type="date" id="flt-day" style="display:none;">
+      <div id="filter-summary"></div>
+    </div>
+
+    <div class="table-scroll">
     <table id="ledger">
       <thead>
         <tr>
@@ -361,7 +426,27 @@
       </thead>
       <tbody id="ledger-body"></tbody>
     </table>
+    </div>
     <div id="empty-state" style="display:none;">Aun no hay movimientos. Agrega el primero arriba.</div>
+
+    <div class="backup-card">
+      <h2>Respaldo de datos</h2>
+      <p class="backup-help">Tus movimientos se guardan solo en este celular. Descarga un respaldo y guárdalo en Google Drive, WhatsApp o tu correo. Si pierdes el celular, instala la app de nuevo y toca <b>Restaurar respaldo</b>.</p>
+      <p id="backup-last" class="backup-last"></p>
+      <div class="backup-actions">
+        <button type="button" class="backup-dl backup-primary">Descargar respaldo</button>
+        <button type="button" id="restore-btn" class="backup-secondary">Restaurar respaldo</button>
+      </div>
+      <input type="file" id="restore-file" style="display:none;">
+      <div id="restore-confirm" class="restore-confirm" style="display:none;">
+        <p id="restore-text"></p>
+        <div class="backup-actions">
+          <button type="button" id="restore-yes" class="backup-danger">Sí, restaurar</button>
+          <button type="button" id="restore-no" class="backup-secondary">Cancelar</button>
+        </div>
+      </div>
+      <p id="backup-msg" class="backup-msg"></p>
+    </div>
   </div>
 
 </div>
@@ -370,11 +455,13 @@
 let entries = [];
 let currentType = 'gasto';
 
-const fmt = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmt = n => (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
+// Fecha local (no UTC), para que despues de las 7pm no salte al dia siguiente
 function todayISO(){
   const d = new Date();
-  return d.toISOString().slice(0,10);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
 document.getElementById('hoy').textContent = new Date().toLocaleDateString('es-EC', {day:'numeric', month:'long', year:'numeric'});
@@ -394,6 +481,8 @@ async function loadEntries(){
   }catch(e){
     entries = [];
   }
+  await loadCategories();
+  lastBackup = await storeGet('lastBackup', 'mis-finanzas-ultimo-respaldo');
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   render();
@@ -409,6 +498,138 @@ async function saveEntries(){
   }catch(e){
     console.error('No se pudo guardar', e);
   }
+}
+
+// ----- Lista de categorias (se guarda igual que los movimientos) -----
+const DEFAULT_CATS = ['Sueldo','Colegio Cristopher','Colegio Alaiia','Préstamo AKI','Internet','Luz eléctrica','Comida','Transporte','Ahorro','Otros'];
+const NEW_OPT = '__nueva__';
+let categories = [];
+const catSelect = document.getElementById('f-cat');
+const catNewBox = document.getElementById('cat-new');
+const catNewInput = document.getElementById('cat-new-input');
+
+async function loadCategories(){
+  let saved = null;
+  try{
+    if(hasClaudeStorage){
+      const res = await window.storage.get('categories', false);
+      saved = res && res.value ? JSON.parse(res.value) : null;
+    }else{
+      const raw = localStorage.getItem('mis-finanzas-categorias');
+      saved = raw ? JSON.parse(raw) : null;
+    }
+  }catch(e){ saved = null; }
+  if(Array.isArray(saved) && saved.length){
+    categories = saved;
+  }else{
+    // Primera vez: lista inicial + categorias que ya usaste en movimientos
+    categories = [...DEFAULT_CATS];
+    entries.forEach(e => { if(!hasCategory(e.category)) categories.push(e.category); });
+    saveCategories();
+  }
+  renderCategorySelect('');
+}
+
+async function saveCategories(){
+  try{
+    if(hasClaudeStorage){
+      await window.storage.set('categories', JSON.stringify(categories), false);
+    }else{
+      localStorage.setItem('mis-finanzas-categorias', JSON.stringify(categories));
+    }
+  }catch(e){ console.error('No se pudo guardar categorias', e); }
+}
+
+function hasCategory(name){
+  return categories.some(c => c.toLowerCase() === name.toLowerCase());
+}
+
+function renderCategorySelect(selected){
+  catSelect.innerHTML = '';
+  const add = (value, text) => {
+    const o = document.createElement('option');
+    o.value = value; o.textContent = text;
+    catSelect.appendChild(o);
+  };
+  add('', 'Elige una categoría');
+  categories.forEach(c => add(c, c));
+  add(NEW_OPT, '+ Agregar nueva categoría...');
+  catSelect.value = selected || '';
+}
+
+catSelect.addEventListener('change', () => {
+  if(catSelect.value === NEW_OPT){
+    catNewBox.style.display = 'flex';
+    catNewInput.value = '';
+    catNewInput.focus();
+  }else{
+    catNewBox.style.display = 'none';
+  }
+});
+
+function addCategory(){
+  const name = catNewInput.value.trim();
+  if(!name){ catNewInput.focus(); return; }
+  const existing = categories.find(c => c.toLowerCase() === name.toLowerCase());
+  if(!existing){
+    categories.push(name);
+    saveCategories();
+  }
+  renderCategorySelect(existing || name);
+  catNewBox.style.display = 'none';
+}
+document.getElementById('cat-new-save').addEventListener('click', addCategory);
+catNewInput.addEventListener('keydown', ev => {
+  if(ev.key === 'Enter'){ ev.preventDefault(); addCategory(); }
+});
+
+// Confirmar tocando dos veces el mismo boton (sin ventanas del navegador,
+// porque algunos navegadores las bloquean y el boton parecia no funcionar)
+function twoTapConfirm(btn, confirmText, onConfirm){
+  const original = btn.textContent;
+  let armed = false, timer = null;
+  const reset = () => { armed = false; btn.textContent = original; btn.classList.remove('armed'); };
+  btn.addEventListener('click', () => {
+    if(!armed){
+      if(btn.dataset.check && !window[btn.dataset.check]()) return;
+      armed = true;
+      btn.textContent = confirmText;
+      btn.classList.add('armed');
+      clearTimeout(timer);
+      timer = setTimeout(reset, 4000);
+      return;
+    }
+    clearTimeout(timer);
+    reset();
+    onConfirm();
+  });
+}
+
+const catDelBtn = document.getElementById('cat-del');
+window.canDeleteCategory = () => {
+  const cat = catSelect.value;
+  if(!cat || cat === NEW_OPT){
+    showFormMsg('Primero elige en la lista la categoría que quieres quitar.');
+    return false;
+  }
+  return true;
+};
+catDelBtn.dataset.check = 'canDeleteCategory';
+twoTapConfirm(catDelBtn, '¿Seguro?', () => {
+  const cat = catSelect.value;
+  if(!cat || cat === NEW_OPT) return;
+  categories = categories.filter(c => c !== cat);
+  saveCategories();
+  renderCategorySelect('');
+  showFormMsg(`"${cat}" se quitó de la lista. Tus movimientos guardados no cambian.`, true);
+});
+catSelect.addEventListener('change', () => showFormMsg(''));
+
+function showFormMsg(text, ok){
+  const m = document.getElementById('error-msg');
+  m.textContent = text;
+  m.style.color = ok ? 'var(--income)' : 'var(--danger)';
+  m.style.display = text ? 'block' : 'none';
 }
 
 function setType(type){
@@ -428,13 +649,22 @@ function render(){
     return {...e, balanceAfter: running};
   });
 
+  // Aplicar el filtro (el saldo se sigue calculando con todo el historial)
+  renderYearOptions();
+  const visible = rows.filter(matchesFilter);
+  renderFilterSummary(visible);
+
   const body = document.getElementById('ledger-body');
+  const emptyState = document.getElementById('empty-state');
   body.innerHTML = '';
-  if(rows.length === 0){
-    document.getElementById('empty-state').style.display = 'block';
+  if(visible.length === 0){
+    emptyState.textContent = rows.length === 0
+      ? 'Aun no hay movimientos. Agrega el primero arriba.'
+      : 'No hay movimientos en esta fecha.';
+    emptyState.style.display = 'block';
   }else{
-    document.getElementById('empty-state').style.display = 'none';
-    rows.slice().reverse().forEach(e => {
+    emptyState.style.display = 'none';
+    visible.slice().reverse().forEach(e => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${e.date}</td>
@@ -456,8 +686,7 @@ function render(){
     });
   }
 
-  const now = new Date();
-  const ym = now.toISOString().slice(0,7);
+  const ym = todayISO().slice(0,7);
   const monthEntries = entries.filter(e => e.date.slice(0,7) === ym);
   const totalIncome = monthEntries.filter(e => e.type==='ingreso').reduce((s,e)=>s+e.amount,0);
   const totalExpense = monthEntries.filter(e => e.type==='gasto').reduce((s,e)=>s+e.amount,0);
@@ -468,7 +697,60 @@ function render(){
   document.getElementById('sum-balance').textContent = fmt(overallBalance);
 
   renderBreakdown(monthEntries.filter(e => e.type==='gasto'), totalExpense);
+  updateBackupInfo();
 }
+
+// ----- Filtro por dia / mes -----
+let filterMode = 'todos';
+const fltMonth = document.getElementById('flt-month');
+const fltDay = document.getElementById('flt-day');
+fltMonth.value = todayISO().slice(0,7);
+fltDay.value = todayISO();
+const fltYear = document.getElementById('flt-year');
+
+// Lista de años: los que tienen movimientos + el año actual
+function renderYearOptions(){
+  const years = new Set(entries.map(e => e.date.slice(0,4)));
+  years.add(todayISO().slice(0,4));
+  const sorted = [...years].sort().reverse();
+  const current = fltYear.value || todayISO().slice(0,4);
+  fltYear.innerHTML = sorted.map(y => `<option value="${y}">${y}</option>`).join('');
+  fltYear.value = sorted.includes(current) ? current : sorted[0];
+}
+
+function matchesFilter(e){
+  if(filterMode === 'anio') return e.date.slice(0,4) === fltYear.value;
+  if(filterMode === 'mes') return e.date.slice(0,7) === fltMonth.value;
+  if(filterMode === 'dia') return e.date === fltDay.value;
+  return true;
+}
+
+function setFilterMode(mode){
+  filterMode = mode;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  fltMonth.style.display = mode === 'mes' ? 'block' : 'none';
+  fltDay.style.display = mode === 'dia' ? 'block' : 'none';
+  fltYear.style.display = mode === 'anio' ? 'block' : 'none';
+  render();
+}
+
+function renderFilterSummary(list){
+  const box = document.getElementById('filter-summary');
+  if(filterMode === 'todos'){ box.innerHTML = ''; return; }
+  const inc = list.filter(e => e.type==='ingreso').reduce((s,e)=>s+e.amount,0);
+  const exp = list.filter(e => e.type==='gasto').reduce((s,e)=>s+e.amount,0);
+  box.innerHTML = `
+    <span>${list.length} mov.</span>
+    <span class="amt-income">Ingresos ${fmt(inc)}</span>
+    <span class="amt-expense">Gastos ${fmt(exp)}</span>
+    <span>Neto ${fmt(inc - exp)}</span>`;
+}
+
+document.querySelectorAll('.filter-btn').forEach(b => b.addEventListener('click', () => setFilterMode(b.dataset.mode)));
+fltMonth.addEventListener('change', render);
+fltDay.addEventListener('change', render);
+fltYear.addEventListener('change', render);
+document.querySelector('.filter-btn[data-mode="todos"]').classList.add('active');
 
 function renderBreakdown(expenseEntries, totalExpense){
   const body = document.getElementById('breakdown-body');
@@ -515,14 +797,14 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
   errorMsg.style.display = 'none';
 
   const date = document.getElementById('f-date').value;
-  const category = document.getElementById('f-cat').value.trim();
+  const catValue = catSelect.value;
+  const category = catValue === NEW_OPT ? '' : catValue;
   const amountRaw = document.getElementById('f-amount').value;
   const desc = document.getElementById('f-desc').value.trim();
   const amount = parseFloat(amountRaw);
 
   if(!date || !category || !amountRaw || isNaN(amount) || amount <= 0){
-    errorMsg.textContent = 'Completa fecha, categoria y un monto valido mayor a cero.';
-    errorMsg.style.display = 'block';
+    showFormMsg('Completa fecha, categoria y un monto valido mayor a cero.');
     return;
   }
 
@@ -534,17 +816,160 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
   await saveEntries();
   render();
 
-  document.getElementById('f-cat').value = '';
+  catSelect.value = '';
+  catNewBox.style.display = 'none';
   document.getElementById('f-amount').value = '';
   document.getElementById('f-desc').value = '';
   document.getElementById('f-date').value = todayISO();
 });
 
-document.getElementById('reset-btn').addEventListener('click', async () => {
-  if(!confirm('Esto borrara todos tus movimientos guardados. Continuar?')) return;
+twoTapConfirm(document.getElementById('reset-btn'), 'Toca otra vez para borrar TODO', async () => {
   entries = [];
   await saveEntries();
   render();
+});
+
+// ----- Respaldo: descargar y restaurar -----
+const BACKUP_REMIND_DAYS = 7;
+let lastBackup = null;
+let pendingRestore = null;
+
+async function storeGet(claudeKey, localKey){
+  try{
+    if(hasClaudeStorage){
+      const res = await window.storage.get(claudeKey, false);
+      return res && res.value ? res.value : null;
+    }
+    return localStorage.getItem(localKey);
+  }catch(e){ return null; }
+}
+async function storeSet(claudeKey, localKey, value){
+  try{
+    if(hasClaudeStorage) await window.storage.set(claudeKey, value, false);
+    else localStorage.setItem(localKey, value);
+  }catch(e){ console.error('No se pudo guardar', e); }
+}
+
+function daysSince(iso){
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+function prettyDate(iso){
+  return new Date(iso).toLocaleDateString('es-EC', {day:'numeric', month:'long', year:'numeric'});
+}
+
+function updateBackupInfo(){
+  const last = document.getElementById('backup-last');
+  const banner = document.getElementById('backup-banner');
+  const bannerText = document.getElementById('backup-banner-text');
+  if(lastBackup){
+    const d = daysSince(lastBackup);
+    last.textContent = `Último respaldo: ${prettyDate(lastBackup)} (${d === 0 ? 'hoy' : d === 1 ? 'hace 1 día' : 'hace ' + d + ' días'})`;
+  }else{
+    last.textContent = 'Último respaldo: nunca';
+  }
+  const needs = entries.length > 0 && (!lastBackup || daysSince(lastBackup) >= BACKUP_REMIND_DAYS);
+  if(needs){
+    bannerText.textContent = lastBackup
+      ? `Llevas ${daysSince(lastBackup)} días sin respaldar tus movimientos.`
+      : 'Aún no has respaldado tus movimientos. Si pierdes el celular, se pierden.';
+    banner.style.display = 'flex';
+  }else{
+    banner.style.display = 'none';
+  }
+}
+
+function showBackupMsg(text, ok){
+  const m = document.getElementById('backup-msg');
+  m.textContent = text;
+  m.style.color = ok ? 'var(--income)' : 'var(--danger)';
+}
+
+function downloadBackup(){
+  const data = {
+    app: 'finanzas-daniel',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    entries,
+    categories
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `finanzas-daniel-respaldo-${todayISO()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  lastBackup = data.exportedAt;
+  storeSet('lastBackup', 'mis-finanzas-ultimo-respaldo', lastBackup);
+  updateBackupInfo();
+  showBackupMsg(`Respaldo descargado (${entries.length} movimientos). Búscalo en Descargas y guárdalo en Google Drive o envíatelo por WhatsApp.`, true);
+}
+document.querySelectorAll('.backup-dl').forEach(b => b.addEventListener('click', downloadBackup));
+
+function isValidEntry(e){
+  return e && typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)
+    && typeof e.amount === 'number' && isFinite(e.amount)
+    && (e.type === 'ingreso' || e.type === 'gasto')
+    && typeof e.category === 'string';
+}
+
+const restoreFile = document.getElementById('restore-file');
+document.getElementById('restore-btn').addEventListener('click', () => {
+  showBackupMsg('');
+  restoreFile.value = '';
+  restoreFile.click();
+});
+
+restoreFile.addEventListener('change', async () => {
+  const file = restoreFile.files && restoreFile.files[0];
+  if(!file) return;
+  let data;
+  try{
+    data = JSON.parse(await file.text());
+  }catch(e){
+    showBackupMsg('Ese archivo no es un respaldo válido de la app.');
+    return;
+  }
+  if(!data || !Array.isArray(data.entries) || !data.entries.every(isValidEntry)){
+    showBackupMsg('Ese archivo no es un respaldo válido de la app.');
+    return;
+  }
+  pendingRestore = data;
+  const fecha = data.exportedAt ? ` del ${prettyDate(data.exportedAt)}` : '';
+  document.getElementById('restore-text').textContent =
+    `El respaldo${fecha} tiene ${data.entries.length} movimientos. ` +
+    `Esto reemplazará los ${entries.length} movimientos que tienes ahora en este dispositivo.`;
+  document.getElementById('restore-confirm').style.display = 'block';
+});
+
+document.getElementById('restore-no').addEventListener('click', () => {
+  pendingRestore = null;
+  document.getElementById('restore-confirm').style.display = 'none';
+});
+
+document.getElementById('restore-yes').addEventListener('click', async () => {
+  if(!pendingRestore) return;
+  const data = pendingRestore;
+  pendingRestore = null;
+  entries = data.entries.map((e, i) => ({
+    id: typeof e.id === 'number' ? e.id : Date.now() + i,
+    date: e.date, category: e.category, desc: e.desc || '', amount: e.amount, type: e.type
+  }));
+  if(Array.isArray(data.categories) && data.categories.length){
+    categories = data.categories.filter(c => typeof c === 'string');
+  }
+  entries.forEach(e => { if(!hasCategory(e.category)) categories.push(e.category); });
+  await saveEntries();
+  await saveCategories();
+  lastBackup = data.exportedAt || new Date().toISOString();
+  await storeSet('lastBackup', 'mis-finanzas-ultimo-respaldo', lastBackup);
+  renderCategorySelect('');
+  render();
+  document.getElementById('restore-confirm').style.display = 'none';
+  showBackupMsg(`Listo: se restauraron ${entries.length} movimientos.`, true);
 });
 
 loadEntries();
