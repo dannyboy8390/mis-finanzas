@@ -382,6 +382,52 @@
   <div id="loading">Cargando tus movimientos...</div>
 
   <div id="app" style="display:none;">
+    <form id="entry-form">
+      <h2>Nuevo movimiento</h2>
+      <div class="toggle-row">
+        <div class="toggle-btn" id="btn-income" data-type="ingreso">Ingreso</div>
+        <div class="toggle-btn" id="btn-expense" data-type="gasto">Gasto</div>
+        <div class="toggle-btn" id="btn-transfer" data-type="transferencia">Transferencia</div>
+      </div>
+      <div class="form-grid" id="bank-fields" style="display:none;">
+        <div class="field">
+          <label for="f-from" id="f-from-label">Banco</label>
+          <select id="f-from"></select>
+        </div>
+        <div class="field" id="f-to-wrap">
+          <label for="f-to">Hacia</label>
+          <select id="f-to"></select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="f-date">Fecha</label>
+          <input type="date" id="f-date">
+        </div>
+        <div class="field" id="f-cat-wrap">
+          <label for="f-cat">Categoria</label>
+          <div class="cat-row">
+            <select id="f-cat"></select>
+            <button type="button" id="cat-del" class="cat-icon-btn" aria-label="Quitar categoria" title="Quitar esta categoría de la lista">Quitar</button>
+          </div>
+          <div class="cat-new" id="cat-new" style="display:none;">
+            <input type="text" id="cat-new-input" placeholder="Nueva categoría">
+            <button type="button" id="cat-new-save">Agregar</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-amount">Monto</label>
+          <input type="number" id="f-amount" step="0.01" min="0" placeholder="0.00">
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label for="f-desc">Descripcion (opcional)</label>
+        <input type="text" id="f-desc" placeholder="Detalle del movimiento">
+      </div>
+      <p id="error-msg"></p>
+      <button type="submit" id="add-btn">Agregar movimiento</button>
+    </form>
+
     <div class="cloud-card" id="cloud-card">
       <div id="cloud-out" style="display:none;">
         <h2>☁ Guardar en la nube</h2>
@@ -440,52 +486,6 @@
       <div id="breakdown-body"></div>
       <div id="breakdown-empty" style="display:none;">Sin gastos registrados este mes todavia.</div>
     </div>
-
-    <form id="entry-form">
-      <h2>Nuevo movimiento</h2>
-      <div class="toggle-row">
-        <div class="toggle-btn" id="btn-income" data-type="ingreso">Ingreso</div>
-        <div class="toggle-btn" id="btn-expense" data-type="gasto">Gasto</div>
-        <div class="toggle-btn" id="btn-transfer" data-type="transferencia">Transferencia</div>
-      </div>
-      <div class="form-grid" id="bank-fields" style="display:none;">
-        <div class="field">
-          <label for="f-from" id="f-from-label">Banco</label>
-          <select id="f-from"></select>
-        </div>
-        <div class="field" id="f-to-wrap">
-          <label for="f-to">Hacia</label>
-          <select id="f-to"></select>
-        </div>
-      </div>
-      <div class="form-grid">
-        <div class="field">
-          <label for="f-date">Fecha</label>
-          <input type="date" id="f-date">
-        </div>
-        <div class="field" id="f-cat-wrap">
-          <label for="f-cat">Categoria</label>
-          <div class="cat-row">
-            <select id="f-cat"></select>
-            <button type="button" id="cat-del" class="cat-icon-btn" aria-label="Quitar categoria" title="Quitar esta categoría de la lista">Quitar</button>
-          </div>
-          <div class="cat-new" id="cat-new" style="display:none;">
-            <input type="text" id="cat-new-input" placeholder="Nueva categoría">
-            <button type="button" id="cat-new-save">Agregar</button>
-          </div>
-        </div>
-        <div class="field">
-          <label for="f-amount">Monto</label>
-          <input type="number" id="f-amount" step="0.01" min="0" placeholder="0.00">
-        </div>
-      </div>
-      <div class="field" style="margin-bottom:12px;">
-        <label for="f-desc">Descripcion (opcional)</label>
-        <input type="text" id="f-desc" placeholder="Detalle del movimiento">
-      </div>
-      <p id="error-msg"></p>
-      <button type="submit" id="add-btn">Agregar movimiento</button>
-    </form>
 
     <div class="ledger-head">
       <h2>Movimientos</h2>
