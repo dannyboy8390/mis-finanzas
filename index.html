@@ -349,6 +349,14 @@
   .field input[type="date"]::-webkit-date-and-time-value{text-align:left;}
   .cat-row .cat-icon-btn{height:40px;}
 
+  /* Alertas */
+  .avail-hint{font-family:'IBM Plex Mono',monospace;font-size:12px;margin-top:4px;}
+  .avail-hint:empty{display:none;}
+  .toast{position:fixed;left:50%;bottom:16px;transform:translate(-50%, 150%);width:calc(100% - 32px);max-width:480px;
+    background:var(--danger);color:#fff;padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.4;
+    box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:1000;opacity:0;transition:transform .25s, opacity .25s;pointer-events:none;}
+  .toast.show{transform:translate(-50%, 0);opacity:1;}
+
   /* Gastos principales: lista simple, sin barras */
   #breakdown-body{border:1px solid var(--paper-line);border-radius:6px;background:#fff;overflow:hidden;}
   #breakdown-body:empty{display:none;}
@@ -370,6 +378,7 @@
 </style>
 </head>
 <body>
+<div id="toast" class="toast" role="alert" aria-live="assertive"></div>
 <div class="wrap">
 
   <header class="masthead">
@@ -393,6 +402,7 @@
         <div class="field">
           <label for="f-from" id="f-from-label">Banco</label>
           <select id="f-from"></select>
+          <div id="f-from-avail" class="avail-hint"></div>
         </div>
         <div class="field" id="f-to-wrap">
           <label for="f-to">Hacia</label>
@@ -739,9 +749,9 @@ fFrom.innerHTML = fTo.innerHTML = BANKS.map(b => `<option value="${b}">${b}</opt
 fFrom.value = DEFAULT_BANK;
 fTo.value = BANKS[1];
 
-function bankBalances(){
+function bankBalances(list = entries){
   const bal = Object.fromEntries(BANKS.map(b => [b, 0]));
-  entries.forEach(e => {
+  list.forEach(e => {
     if(e.type === 'ingreso'){
       const acc = e.account in bal ? e.account : DEFAULT_BANK;  // ingresos antiguos sin banco
       bal[acc] += e.amount;
@@ -754,6 +764,35 @@ function bankBalances(){
   return bal;
 }
 
+// Centavos, para comparar montos sin errores de redondeo
+const cents = n => Math.round(n * 100);
+
+// Banco que quedaria en negativo con esta lista de movimientos (o null si ninguno)
+function bankInNegative(list){
+  const bal = bankBalances(list);
+  return BANKS.find(b => cents(bal[b]) < 0) || null;
+}
+
+// Alerta visible en cualquier parte de la pantalla
+let toastTimer = null;
+function showToast(text){
+  const t = document.getElementById('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 5000);
+}
+
+// Saldo disponible del banco de origen, debajo de "Desde"
+function updateAvailHint(){
+  const hint = document.getElementById('f-from-avail');
+  if(currentType !== 'transferencia'){ hint.textContent = ''; return; }
+  const avail = bankBalances()[fFrom.value] || 0;
+  hint.textContent = 'Disponible: ' + fmt(avail);
+  hint.style.color = cents(avail) <= 0 ? 'var(--danger)' : 'var(--ink-soft)';
+}
+fFrom.addEventListener('change', updateAvailHint);
+
 function renderBanks(){
   const bal = bankBalances();
   const total = BANKS.reduce((s, b) => s + bal[b], 0);
@@ -764,6 +803,7 @@ function renderBanks(){
     </div>`;
   document.getElementById('banks').innerHTML =
     BANKS.map(b => row(b, bal[b])).join('') + row('Total en bancos', total, 'total');
+  updateAvailHint();
 }
 
 function setType(type){
@@ -780,6 +820,7 @@ function setType(type){
     fTo.value = BANKS.find(b => b !== fFrom.value);
   }
   showFormMsg('');
+  updateAvailHint();
 }
 document.getElementById('btn-income').addEventListener('click', () => setType('ingreso'));
 document.getElementById('btn-expense').addEventListener('click', () => setType('gasto'));
@@ -829,7 +870,14 @@ function render(){
     body.querySelectorAll('.del-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = Number(btn.dataset.id);
-        entries = entries.filter(e => e.id !== id);
+        // No permitir borrar algo que deje un banco en negativo
+        const after = entries.filter(e => e.id !== id);
+        const neg = bankInNegative(after);
+        if(neg && !bankInNegative(entries)){
+          showToast(`⚠ No se puede borrar: ${neg} quedaría en negativo (${fmt(bankBalances(after)[neg])}). Primero borra las transferencias que salieron de ese banco.`);
+          return;
+        }
+        entries = after;
         saveEntries();
         render();
         cloudQueue({t:'del', id});
@@ -960,6 +1008,16 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
   if(isTransfer && fFrom.value === fTo.value){
     showFormMsg('Elige dos bancos distintos para la transferencia.');
     return;
+  }
+  // Nunca transferir mas de lo que tiene el banco de origen
+  if(isTransfer){
+    const avail = bankBalances()[fFrom.value] || 0;
+    if(cents(amount) > cents(avail)){
+      const msg = `⚠ Saldo insuficiente en ${fFrom.value}: tienes ${fmt(avail)} disponibles y quieres transferir ${fmt(amount)}. La transferencia NO se guardó.`;
+      showFormMsg(msg);
+      showToast(msg);
+      return;
+    }
   }
 
   const entry = {
