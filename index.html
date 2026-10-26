@@ -140,10 +140,13 @@
   .toggle-btn.active-expense{background:var(--expense-bg);border-color:var(--expense);color:var(--expense);}
   .toggle-btn.active-transfer{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);}
   .banks-card{background:var(--card);border:1px solid var(--paper-line);border-radius:6px;padding:16px 18px;margin-bottom:24px;}
-  .banks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-  .bank{border:1px solid var(--paper-line);border-radius:6px;padding:10px;background:#fff;min-width:0;}
-  .bank .label{font-size:11px;color:var(--ink-soft);margin-bottom:4px;line-height:1.25;}
-  .bank .value{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500;}
+  .banks{border:1px solid var(--paper-line);border-radius:6px;background:#fff;overflow:hidden;}
+  .bank{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border-bottom:1px solid var(--paper-line);}
+  .bank:last-child{border-bottom:none;}
+  .bank .label{font-size:14px;font-weight:500;color:var(--ink);min-width:0;}
+  .bank .value{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500;white-space:nowrap;}
+  .bank.total{background:var(--paper);}
+  .bank.total .label{font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);}
   .banks-note{font-size:11px;color:var(--ink-faint);margin:10px 0 0;}
   .amt-transfer{color:var(--accent);}
   .row-sub{display:block;font-family:'Inter',sans-serif;font-size:11px;color:var(--ink-faint);margin-top:2px;}
@@ -729,11 +732,14 @@ function bankBalances(){
 
 function renderBanks(){
   const bal = bankBalances();
-  document.getElementById('banks').innerHTML = BANKS.map(b => `
-    <div class="bank">
-      <div class="label">${escapeHtml(b)}</div>
-      <div class="value" style="color:${bal[b] < 0 ? 'var(--danger)' : 'var(--ink)'}">${fmt(bal[b])}</div>
-    </div>`).join('');
+  const total = BANKS.reduce((s, b) => s + bal[b], 0);
+  const row = (label, value, cls) => `
+    <div class="bank${cls ? ' ' + cls : ''}">
+      <div class="label">${escapeHtml(label)}</div>
+      <div class="value" style="color:${value < 0 ? 'var(--danger)' : 'var(--ink)'}">${fmt(value)}</div>
+    </div>`;
+  document.getElementById('banks').innerHTML =
+    BANKS.map(b => row(b, bal[b])).join('') + row('Total en bancos', total, 'total');
 }
 
 function setType(type){
