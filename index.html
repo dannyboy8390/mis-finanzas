@@ -501,7 +501,8 @@
     <div class="banks-card">
       <div class="ledger-head"><h2>Saldos por banco</h2></div>
       <div class="banks" id="banks"></div>
-      <p class="banks-note">Ingresos que entraron a cada banco, más o menos lo que transferiste entre ellos.</p>
+      <p class="banks-note">Ingresos que entraron a cada banco, menos los gastos pagados desde ahí, más o menos lo que transferiste entre ellos.</p>
+      <p class="banks-note" id="banks-unassigned" style="color:var(--accent);"></p>
     </div>
 
     <div class="breakdown" id="breakdown-section">
@@ -771,12 +772,19 @@ function bankBalances(list = entries){
       const acc = e.account in bal ? e.account : DEFAULT_BANK;  // ingresos antiguos sin banco
       bal[acc] += e.amount;
     }
+    // Gasto: se resta del banco desde el que se pago (los gastos antiguos sin banco no restan)
+    if(e.type === 'gasto' && e.account in bal) bal[e.account] -= e.amount;
     if(e.type === 'transferencia'){
       if(e.account in bal) bal[e.account] -= e.amount;
       if(e.toAccount in bal) bal[e.toAccount] += e.amount;
     }
   });
   return bal;
+}
+
+// Total de gastos que no tienen banco asignado (registrados antes de esta version)
+function unassignedExpenses(){
+  return entries.filter(e => e.type === 'gasto' && !BANKS.includes(e.account)).reduce((s, e) => s + e.amount, 0);
 }
 
 // Centavos, para comparar montos sin errores de redondeo
@@ -809,10 +817,10 @@ document.getElementById('block-ok').addEventListener('click', () => {
   document.getElementById('block-modal').classList.remove('show');
 });
 
-// Saldo disponible del banco de origen, debajo de "Desde"
+// Saldo disponible del banco del que sale el dinero (gasto o transferencia)
 function updateAvailHint(){
   const hint = document.getElementById('f-from-avail');
-  if(currentType !== 'transferencia'){ hint.textContent = ''; return; }
+  if(currentType === 'ingreso'){ hint.textContent = ''; return; }
   const avail = bankBalances()[fFrom.value] || 0;
   hint.textContent = 'Disponible: ' + fmt(avail);
   hint.style.color = cents(avail) <= 0 ? 'var(--danger)' : 'var(--ink-soft)';
@@ -829,6 +837,10 @@ function renderBanks(){
     </div>`;
   document.getElementById('banks').innerHTML =
     BANKS.map(b => row(b, bal[b])).join('') + row('Total en bancos', total, 'total');
+  const sinBanco = unassignedExpenses();
+  document.getElementById('banks-unassigned').textContent = cents(sinBanco) > 0
+    ? `Hay ${fmt(sinBanco)} en gastos antiguos sin banco asignado: no se restan de ningún banco.`
+    : '';
   updateAvailHint();
 }
 
@@ -837,10 +849,11 @@ function setType(type){
   document.getElementById('btn-income').classList.toggle('active-income', type==='ingreso');
   document.getElementById('btn-expense').classList.toggle('active-expense', type==='gasto');
   document.getElementById('btn-transfer').classList.toggle('active-transfer', type==='transferencia');
-  // Ingreso: elegir banco. Transferencia: desde/hacia, sin categoria. Gasto: sin banco.
-  document.getElementById('bank-fields').style.display = type === 'gasto' ? 'none' : 'grid';
+  // Ingreso: banco donde entra. Gasto: banco del que se paga. Transferencia: desde/hacia, sin categoria.
+  document.getElementById('bank-fields').style.display = 'grid';
   document.getElementById('f-to-wrap').style.display = type === 'transferencia' ? 'flex' : 'none';
-  document.getElementById('f-from-label').textContent = type === 'transferencia' ? 'Desde' : 'Banco';
+  document.getElementById('f-from-label').textContent =
+    type === 'transferencia' ? 'Desde' : type === 'gasto' ? 'Pagado desde' : 'Banco donde entra';
   document.getElementById('f-cat-wrap').style.display = type === 'transferencia' ? 'none' : 'flex';
   if(type === 'transferencia' && fTo.value === fFrom.value){
     fTo.value = BANKS.find(b => b !== fFrom.value);
@@ -880,7 +893,9 @@ function render(){
     visible.slice().reverse().forEach(e => {
       const tr = document.createElement('tr');
       const isT = e.type === 'transferencia';
-      const sub = isT ? `${e.account} → ${e.toAccount}` : (e.type === 'ingreso' && e.account ? e.account : '');
+      const sub = isT ? `${e.account} → ${e.toAccount}`
+        : e.type === 'ingreso' && e.account ? e.account
+        : e.type === 'gasto' && e.account ? `Pagado desde ${e.account}` : '';
       const amtClass = isT ? 'amt-transfer' : e.type === 'ingreso' ? 'amt-income' : 'amt-expense';
       const sign = isT ? '↔ ' : e.type === 'ingreso' ? '+' : '-';
       tr.innerHTML = `
@@ -902,7 +917,7 @@ function render(){
         if(neg && !bankInNegative(entries)){
           showBlock('No se puede borrar',
             `Si borras este movimiento, ${neg} quedaría en ${fmt(bankBalances(after)[neg])}. ` +
-            `Primero borra las transferencias que salieron de ese banco.`);
+            `Primero borra los gastos o transferencias que salieron de ese banco.`);
           return;
         }
         entries = after;
@@ -1037,14 +1052,16 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
     showFormMsg('Elige dos bancos distintos para la transferencia.');
     return;
   }
-  // Nunca transferir mas de lo que tiene el banco de origen
-  if(isTransfer){
+  // Nunca sacar (gasto o transferencia) mas de lo que tiene el banco
+  if(isTransfer || currentType === 'gasto'){
     const avail = bankBalances()[fFrom.value] || 0;
     if(cents(amount) > cents(avail)){
-      showFormMsg(`⚠ Saldo insuficiente en ${fFrom.value}. La transferencia NO se guardó.`);
+      const que = isTransfer ? 'La transferencia' : 'El gasto';
+      const accion = isTransfer ? 'quieres transferir' : 'el gasto es de';
+      showFormMsg(`⚠ Saldo insuficiente en ${fFrom.value}. ${que} NO se guardó.`);
       showBlock('Saldo insuficiente',
-        `${fFrom.value} tiene ${fmt(avail)} disponibles y quieres transferir ${fmt(amount)}. ` +
-        `La transferencia NO se guardó. Escribe un monto igual o menor a ${fmt(Math.max(avail, 0))}.`);
+        `${fFrom.value} tiene ${fmt(avail)} disponibles y ${accion} ${fmt(amount)}. ` +
+        `${que} NO se guardó. Elige otro banco o escribe un monto igual o menor a ${fmt(Math.max(avail, 0))}.`);
       return;
     }
   }
@@ -1054,8 +1071,8 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
     date, category, desc, amount,
     type: currentType
   };
-  if(currentType === 'ingreso') entry.account = fFrom.value;
-  if(isTransfer){ entry.account = fFrom.value; entry.toAccount = fTo.value; }
+  entry.account = fFrom.value;  // ingreso: entra aqui; gasto y transferencia: sale de aqui
+  if(isTransfer) entry.toAccount = fTo.value;
   entries.push(entry);
   await saveEntries();
   render();

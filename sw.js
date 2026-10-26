@@ -1,5 +1,5 @@
 // Cambia este numero cada vez que subas una version nueva
-const CACHE_NAME = 'mis-finanzas-v19';
+const CACHE_NAME = 'mis-finanzas-v20';
 const SUPABASE_SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js';
 const FILES_TO_CACHE = [
   './',
