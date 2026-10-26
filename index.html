@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Finanzas">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
 
@@ -299,6 +300,18 @@
   .backup-msg{font-size:13px;margin:10px 0 0;}
   .backup-msg:empty{display:none;}
 
+  .cloud-card{background:var(--card);border:1px solid var(--paper-line);border-radius:6px;padding:14px 16px;margin-bottom:20px;}
+  .cloud-card h2{font-family:'Spectral',serif;font-size:18px;font-weight:600;margin:0 0 8px;}
+  .cloud-card input{width:100%;margin-bottom:8px;}
+  .cloud-in{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;}
+  #cl-status{font-size:14px;font-weight:600;}
+  #cl-status.ok{color:var(--income);}
+  #cl-status.warn{color:var(--accent);}
+  #cl-status.bad{color:var(--danger);}
+  .cloud-user{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .cloud-btns{display:flex;gap:6px;}
+  .cloud-btns button{background:#fff;border:1px solid var(--paper-line);border-radius:4px;padding:7px 12px;font-size:12px;cursor:pointer;color:var(--ink);}
+
   .filter-bar{margin-bottom:12px;}
   .filter-bar .toggle-row{margin-bottom:8px;}
   .filter-btn.active{background:var(--ink);border-color:var(--ink);color:var(--paper);}
@@ -332,6 +345,31 @@
   <div id="loading">Cargando tus movimientos...</div>
 
   <div id="app" style="display:none;">
+    <div class="cloud-card" id="cloud-card">
+      <div id="cloud-out" style="display:none;">
+        <h2>☁ Guardar en la nube</h2>
+        <p class="backup-help">Entra con tu cuenta para que cada movimiento se guarde solo en internet y puedas verlo en cualquier celular o computadora.</p>
+        <input type="email" id="cl-email" placeholder="Tu correo" autocomplete="email">
+        <input type="password" id="cl-pass" placeholder="Contraseña (mínimo 6 caracteres)" autocomplete="current-password">
+        <div class="backup-actions">
+          <button type="button" id="cl-login" class="backup-primary">Entrar</button>
+          <button type="button" id="cl-signup" class="backup-secondary">Crear cuenta</button>
+        </div>
+        <p id="cl-msg" class="backup-msg"></p>
+      </div>
+      <div id="cloud-in" class="cloud-in" style="display:none;">
+        <div>
+          <div id="cl-status"></div>
+          <div id="cl-user" class="cloud-user"></div>
+        </div>
+        <div class="cloud-btns">
+          <button type="button" id="cl-sync">Sincronizar</button>
+          <button type="button" id="cl-logout">Salir</button>
+        </div>
+      </div>
+      <div id="cloud-na" class="cloud-user" style="display:none;">La nube no está disponible sin internet. Tus cambios se guardan en este dispositivo; abre la app con internet para sincronizar.</div>
+    </div>
+
     <div id="backup-banner" class="backup-banner" style="display:none;">
       <span id="backup-banner-text"></span>
       <button type="button" class="backup-dl">Descargar respaldo</button>
@@ -431,7 +469,7 @@
 
     <div class="backup-card">
       <h2>Respaldo de datos</h2>
-      <p class="backup-help">Tus movimientos se guardan solo en este celular. Descarga un respaldo y guárdalo en Google Drive, WhatsApp o tu correo. Si pierdes el celular, instala la app de nuevo y toca <b>Restaurar respaldo</b>.</p>
+      <p class="backup-help" id="backup-help">Tus movimientos se guardan solo en este celular. Descarga un respaldo y guárdalo en Google Drive, WhatsApp o tu correo. Si pierdes el celular, instala la app de nuevo y toca <b>Restaurar respaldo</b>.</p>
       <p id="backup-last" class="backup-last"></p>
       <div class="backup-actions">
         <button type="button" class="backup-dl backup-primary">Descargar respaldo</button>
@@ -486,6 +524,7 @@ async function loadEntries(){
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   render();
+  initCloud();
 }
 
 async function saveEntries(){
@@ -574,6 +613,7 @@ function addCategory(){
   if(!existing){
     categories.push(name);
     saveCategories();
+    cloudQueue({t:'cats'});
   }
   renderCategorySelect(existing || name);
   catNewBox.style.display = 'none';
@@ -620,6 +660,7 @@ twoTapConfirm(catDelBtn, '¿Seguro?', () => {
   if(!cat || cat === NEW_OPT) return;
   categories = categories.filter(c => c !== cat);
   saveCategories();
+  cloudQueue({t:'cats'});
   renderCategorySelect('');
   showFormMsg(`"${cat}" se quitó de la lista. Tus movimientos guardados no cambian.`, true);
 });
@@ -682,6 +723,7 @@ function render(){
         entries = entries.filter(e => e.id !== id);
         saveEntries();
         render();
+        cloudQueue({t:'del', id});
       });
     });
   }
@@ -808,13 +850,15 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
     return;
   }
 
-  entries.push({
+  const entry = {
     id: Date.now(),
     date, category, desc, amount,
     type: currentType
-  });
+  };
+  entries.push(entry);
   await saveEntries();
   render();
+  cloudQueue({t:'up', es:[entry]});
 
   catSelect.value = '';
   catNewBox.style.display = 'none';
@@ -827,6 +871,7 @@ twoTapConfirm(document.getElementById('reset-btn'), 'Toca otra vez para borrar T
   entries = [];
   await saveEntries();
   render();
+  cloudQueue({t:'delall'});
 });
 
 // ----- Respaldo: descargar y restaurar -----
@@ -867,7 +912,9 @@ function updateBackupInfo(){
   }else{
     last.textContent = 'Último respaldo: nunca';
   }
-  const needs = entries.length > 0 && (!lastBackup || daysSince(lastBackup) >= BACKUP_REMIND_DAYS);
+  // Con la nube activa y al dia, no hace falta recordar el respaldo manual
+  const cloudOk = typeof cloudUser !== 'undefined' && cloudUser && cloudState === 'ok';
+  const needs = !cloudOk && entries.length > 0 && (!lastBackup || daysSince(lastBackup) >= BACKUP_REMIND_DAYS);
   if(needs){
     bannerText.textContent = lastBackup
       ? `Llevas ${daysSince(lastBackup)} días sin respaldar tus movimientos.`
@@ -964,6 +1011,11 @@ document.getElementById('restore-yes').addEventListener('click', async () => {
   entries.forEach(e => { if(!hasCategory(e.category)) categories.push(e.category); });
   await saveEntries();
   await saveCategories();
+  // En la nube: reemplazar todo por el contenido del respaldo
+  const ops = [{t:'delall'}];
+  for(let i = 0; i < entries.length; i += 500) ops.push({t:'up', es: entries.slice(i, i + 500)});
+  ops.push({t:'cats'});
+  cloudQueue(...ops);
   lastBackup = data.exportedAt || new Date().toISOString();
   await storeSet('lastBackup', 'mis-finanzas-ultimo-respaldo', lastBackup);
   renderCategorySelect('');
@@ -971,6 +1023,250 @@ document.getElementById('restore-yes').addEventListener('click', async () => {
   document.getElementById('restore-confirm').style.display = 'none';
   showBackupMsg(`Listo: se restauraron ${entries.length} movimientos.`, true);
 });
+
+// ----- Nube (Supabase): guardado automatico y sincronizacion -----
+// La clave publica es segura en el navegador: las reglas de la base de datos
+// solo dejan que cada usuario vea y cambie sus propios datos.
+const SUPABASE_URL = 'https://wxuvlvbkwunsefuwgpub.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4dXZsdmJrd3Vuc2VmdXdncHViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5NzUwMjYsImV4cCI6MjEwODU1MTAyNn0.tGXPq2P90pkbzy6PPTMWPaBNEonI2oIOan21Pv9sKbg';
+const QUEUE_KEY = 'mis-finanzas-pendientes';        // cambios que faltan subir
+const SYNC_USER_KEY = 'mis-finanzas-sync-usuario';  // usuario ya unido en este dispositivo
+
+let sb = null;
+let cloudUser = null;
+let cloudState = 'off';   // off | syncing | ok | offline | error
+let cloudError = '';
+let syncing = false, syncAgain = false;
+
+function loadQueue(){ try{ return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }catch(e){ return []; } }
+function saveQueue(q){ try{ localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }catch(e){} }
+
+// Anota cambios para subir y sincroniza (si hay sesion)
+function cloudQueue(...ops){
+  if(!cloudUser) return;
+  saveQueue(loadQueue().concat(ops));
+  flushAndPull();
+}
+
+const toCloud = e => ({ user_id: cloudUser.id, id: e.id, fecha: e.date, categoria: e.category, descripcion: e.desc || '', monto: e.amount, tipo: e.type });
+const fromCloud = r => ({ id: Number(r.id), date: r.fecha, category: r.categoria, desc: r.descripcion || '', amount: Number(r.monto), type: r.tipo });
+
+function isNetErr(err){
+  return !navigator.onLine || /fetch|network|load failed|timeout/i.test((err && err.message) || '');
+}
+
+async function runOp(op){
+  if(op.t === 'up'){
+    const { error } = await sb.from('movimientos').upsert(op.es.map(toCloud), { onConflict: 'user_id,id' });
+    return error;
+  }
+  if(op.t === 'del'){
+    const { error } = await sb.from('movimientos').delete().eq('user_id', cloudUser.id).eq('id', op.id);
+    return error;
+  }
+  if(op.t === 'delall'){
+    const { error } = await sb.from('movimientos').delete().eq('user_id', cloudUser.id);
+    return error;
+  }
+  if(op.t === 'cats'){
+    let { error } = await sb.from('categorias').delete().eq('user_id', cloudUser.id);
+    if(error || !categories.length) return error;
+    ({ error } = await sb.from('categorias').insert(categories.map((n, i) => ({ user_id: cloudUser.id, nombre: n, posicion: i }))));
+    return error;
+  }
+  return null;
+}
+
+// Sube los cambios pendientes en orden. Si no hay internet, se detiene y espera.
+async function flushQueue(){
+  let result = 'ok';
+  while(true){
+    const q = loadQueue();
+    if(!q.length) return result;
+    const err = await runOp(q[0]);
+    if(err && isNetErr(err)) return 'offline';
+    if(err){ console.error('Nube:', err); cloudError = err.message; result = 'error'; }
+    const rest = loadQueue(); rest.shift(); saveQueue(rest);
+  }
+}
+
+async function fetchAll(table, columns, orderCol){
+  const rows = [];
+  for(let from = 0; ; from += 1000){
+    const { data, error } = await sb.from(table).select(columns).order(orderCol).range(from, from + 999);
+    if(error) throw error;
+    rows.push(...data);
+    if(data.length < 1000) return rows;
+  }
+}
+
+// Trae de la nube la version mas reciente (incluye cambios hechos en otros dispositivos)
+async function pullFromCloud(){
+  const [rows, cats] = await Promise.all([
+    fetchAll('movimientos', 'id,fecha,categoria,descripcion,monto,tipo', 'fecha'),
+    fetchAll('categorias', 'nombre,posicion', 'posicion')
+  ]);
+  if(loadQueue().length) return;  // llegaron cambios nuevos mientras tanto: se aplican en la siguiente vuelta
+  entries = rows.map(fromCloud);
+  if(cats.length) categories = cats.map(c => c.nombre);
+  await saveEntries();
+  await saveCategories();
+  const selected = catSelect.value;
+  renderCategorySelect(categories.includes(selected) || selected === NEW_OPT ? selected : '');
+  if(selected === NEW_OPT) catSelect.value = NEW_OPT;
+  render();
+}
+
+// Primera vez en este dispositivo con esta cuenta: unir lo local con lo de la nube
+async function firstMerge(){
+  for(let i = 0; i < entries.length; i += 500){
+    const { error } = await sb.from('movimientos')
+      .upsert(entries.slice(i, i + 500).map(toCloud), { onConflict: 'user_id,id', ignoreDuplicates: true });
+    if(error) throw error;
+  }
+  const cloudCats = (await fetchAll('categorias', 'nombre,posicion', 'posicion')).map(c => c.nombre);
+  const merged = cloudCats.concat(categories.filter(c => !cloudCats.includes(c)));
+  if(merged.length !== cloudCats.length){
+    categories = merged;
+    const err = await runOp({t:'cats'});
+    if(err) throw err;
+  }
+  localStorage.setItem(SYNC_USER_KEY, cloudUser.id);
+}
+
+async function flushAndPull(){
+  if(!sb || !cloudUser) return;
+  if(syncing){ syncAgain = true; return; }
+  syncing = true;
+  setCloudState('syncing');
+  try{
+    if(localStorage.getItem(SYNC_USER_KEY) !== cloudUser.id) await firstMerge();
+    const r = await flushQueue();
+    if(r === 'offline'){ setCloudState('offline'); return; }
+    await pullFromCloud();
+    setCloudState(r === 'error' ? 'error' : 'ok');
+  }catch(err){
+    console.error('Nube:', err);
+    cloudError = (err && err.message) || '';
+    setCloudState(isNetErr(err) ? 'offline' : 'error');
+  }finally{
+    syncing = false;
+    if(syncAgain){ syncAgain = false; flushAndPull(); }
+  }
+}
+
+function setCloudState(s){ cloudState = s; renderCloud(); }
+
+function renderCloud(){
+  const out = document.getElementById('cloud-out');
+  const inn = document.getElementById('cloud-in');
+  const na = document.getElementById('cloud-na');
+  const help = document.getElementById('backup-help');
+  out.style.display = sb && !cloudUser ? 'block' : 'none';
+  inn.style.display = sb && cloudUser ? 'flex' : 'none';
+  na.style.display = sb ? 'none' : 'block';
+  if(sb && cloudUser){
+    const st = document.getElementById('cl-status');
+    const pend = loadQueue().length;
+    const map = {
+      syncing: ['☁ Sincronizando…', 'warn'],
+      ok: ['☁ Guardado en la nube ✓', 'ok'],
+      offline: [pend === 1 ? '☁ Sin conexión: 1 cambio se subirá al volver internet'
+                           : `☁ Sin conexión: ${pend} cambios se subirán al volver internet`, 'warn'],
+      error: ['☁ Error al guardar en la nube' + (cloudError ? ': ' + cloudError : ''), 'bad'],
+      off: ['☁ Conectando…', 'warn']
+    };
+    const [txt, cls] = map[cloudState] || map.off;
+    st.textContent = txt;
+    st.className = cls;
+    document.getElementById('cl-user').textContent = cloudUser.email || '';
+    help.innerHTML = 'Tus movimientos se guardan <b>automáticamente en la nube</b>. El respaldo manual es una copia extra opcional.';
+  }else{
+    help.innerHTML = 'Tus movimientos se guardan solo en este dispositivo. Entra a la nube arriba, o descarga un respaldo y guárdalo en Google Drive, WhatsApp o tu correo. Si pierdes el celular, instala la app de nuevo y toca <b>Restaurar respaldo</b>.';
+  }
+  updateBackupInfo();
+}
+
+function showCloudMsg(text, ok){
+  const m = document.getElementById('cl-msg');
+  m.textContent = text;
+  m.style.color = ok ? 'var(--income)' : 'var(--danger)';
+}
+
+function authErrorText(err){
+  const m = (err && err.message) || '';
+  if(/invalid login credentials/i.test(m)) return 'Correo o contraseña incorrectos.';
+  if(/email not confirmed/i.test(m)) return 'Primero confirma tu correo: abre el enlace que te enviamos.';
+  if(/password should be at least/i.test(m)) return 'La contraseña debe tener al menos 6 caracteres.';
+  if(/rate limit|too many/i.test(m)) return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+  if(isNetErr(err)) return 'Sin conexión a internet.';
+  return 'No se pudo: ' + m;
+}
+
+function readCredentials(){
+  const email = document.getElementById('cl-email').value.trim();
+  const password = document.getElementById('cl-pass').value;
+  if(!email || !password){ showCloudMsg('Escribe tu correo y tu contraseña.'); return null; }
+  return { email, password };
+}
+
+function initCloud(){
+  if(!window.supabase || !window.supabase.createClient){ renderCloud(); return; }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+
+  sb.auth.onAuthStateChange((event, session) => {
+    const user = session ? session.user : null;
+    const changed = (user && user.id) !== (cloudUser && cloudUser.id);
+    cloudUser = user;
+    if(changed){
+      cloudState = user ? 'off' : 'off';
+      renderCloud();
+      if(user) setTimeout(flushAndPull, 0);
+    }
+  });
+
+  document.getElementById('cl-login').addEventListener('click', async () => {
+    const c = readCredentials(); if(!c) return;
+    showCloudMsg('Entrando…', true);
+    const { error } = await sb.auth.signInWithPassword(c);
+    if(error) showCloudMsg(authErrorText(error));
+    else { showCloudMsg(''); document.getElementById('cl-pass').value = ''; }
+  });
+
+  document.getElementById('cl-signup').addEventListener('click', async () => {
+    const c = readCredentials(); if(!c) return;
+    if(c.password.length < 6){ showCloudMsg('La contraseña debe tener al menos 6 caracteres.'); return; }
+    showCloudMsg('Creando tu cuenta…', true);
+    const { data, error } = await sb.auth.signUp({ ...c, options: { emailRedirectTo: location.origin + location.pathname } });
+    if(error){ showCloudMsg(authErrorText(error)); return; }
+    if(data.session){ showCloudMsg(''); return; }
+    if(data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0){
+      showCloudMsg('Ese correo ya tiene cuenta. Toca Entrar.');
+      return;
+    }
+    showCloudMsg(`Listo. Te enviamos un correo a ${c.email}: ábrelo y toca el enlace para confirmar tu cuenta. Después vuelve aquí y toca Entrar.`, true);
+  });
+
+  document.getElementById('cl-sync').addEventListener('click', () => flushAndPull());
+
+  twoTapConfirm(document.getElementById('cl-logout'), '¿Salir?', async () => {
+    await sb.auth.signOut();
+    // Al volver a entrar se unira de nuevo lo local con la nube
+    localStorage.removeItem(SYNC_USER_KEY);
+    saveQueue([]);
+    cloudUser = null;
+    cloudState = 'off';
+    renderCloud();
+  });
+
+  window.addEventListener('online', () => flushAndPull());
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible') flushAndPull();
+  });
+  renderCloud();
+}
 
 loadEntries();
 

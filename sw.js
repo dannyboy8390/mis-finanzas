@@ -1,11 +1,13 @@
 // Cambia este numero cada vez que subas una version nueva
-const CACHE_NAME = 'mis-finanzas-v8';
+const CACHE_NAME = 'mis-finanzas-v9';
+const SUPABASE_SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js';
 const FILES_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  SUPABASE_SDK
 ];
 
 self.addEventListener('install', (event) => {
@@ -24,13 +26,17 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Primero intenta internet (para recibir actualizaciones); si no hay conexion, usa la copia guardada
+// Primero intenta internet (para recibir actualizaciones); si no hay conexion, usa la copia guardada.
+// Las llamadas a la nube (Supabase) y otros sitios pasan directo, sin cache.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const url = event.request.url;
+  const sameOrigin = new URL(url).origin === self.location.origin;
+  if (!sameOrigin && url !== SUPABASE_SDK) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response.ok && new URL(event.request.url).origin === self.location.origin) {
+        if (response.ok && sameOrigin) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
