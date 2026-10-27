@@ -1561,8 +1561,31 @@ async function firstMerge(){
   localStorage.setItem(SYNC_USER_KEY, cloudUser.id);
 }
 
+// Pregunta a la nube si la sesion sigue activa. Si se cerro desde otro dispositivo
+// ("Cerrar sesion en todos los dispositivos"), cierra aqui y borra la copia local al instante.
+let checkingSession = false;
+async function checkSessionAlive(){
+  if(!sb || !cloudUser || checkingSession || !navigator.onLine) return true;
+  checkingSession = true;
+  try{
+    const { error } = await sb.auth.getUser();
+    if(error && !isNetErr(error) &&
+       (error.status === 401 || error.status === 403 || /session|jwt|token|not found|expired/i.test(error.message || ''))){
+      await sb.auth.signOut({ scope: 'local' });  // dispara SIGNED_OUT: se borra la copia local y se avisa
+      return false;
+    }
+    return true;
+  }catch(e){
+    return true;  // sin conexion u otro problema: se vuelve a revisar luego
+  }finally{
+    checkingSession = false;
+  }
+}
+
 async function flushAndPull(){
   if(!sb || !cloudUser) return;
+  if(!(await checkSessionAlive())) return;
+  if(!cloudUser) return;
   if(syncing){ syncAgain = true; return; }
   syncing = true;
   setCloudState('syncing');
@@ -1789,6 +1812,9 @@ function initCloud(){
   document.addEventListener('visibilitychange', () => {
     if(document.visibilityState === 'visible') flushAndPull();
   });
+  window.addEventListener('focus', () => checkSessionAlive());
+  // Mientras la app esta abierta en pantalla, revisar la sesion cada minuto
+  setInterval(() => { if(document.visibilityState === 'visible') checkSessionAlive(); }, 60000);
   renderCloud();
 }
 
