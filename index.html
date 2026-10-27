@@ -371,6 +371,15 @@
   .modal h3{font-family:'Spectral',serif;font-size:20px;color:var(--danger);margin:0 0 10px;}
   .modal p{font-size:15px;line-height:1.5;color:var(--ink);margin:0 0 18px;}
   .modal button{width:100%;padding:12px;border:none;border-radius:6px;background:var(--danger);color:#fff;font-size:15px;font-weight:600;cursor:pointer;}
+  .modal.modal-ok{border-top-color:var(--income);}
+  .modal.modal-ok h3{color:var(--income);}
+  .modal.modal-ok button{background:var(--income);}
+  .modal input{width:100%;margin-bottom:8px;height:42px;}
+  .modal .backup-msg{margin:0 0 10px;}
+  .link-btn{background:none;border:none;padding:10px 0 0;color:var(--ink-soft);font-size:13px;text-decoration:underline;cursor:pointer;display:block;}
+  .cloud-in .link-btn{flex-basis:100%;text-align:left;padding-top:4px;}
+  .danger-link{color:var(--danger);}
+  .danger-link.armed{font-weight:700;}
 
   /* Gastos principales: lista simple, sin barras */
   #breakdown-body{border:1px solid var(--paper-line);border-radius:6px;background:#fff;overflow:hidden;}
@@ -394,8 +403,18 @@
 </head>
 <body>
 <div id="toast" class="toast" role="alert" aria-live="assertive"></div>
+<div id="pw-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pw-title">
+  <div class="modal modal-ok">
+    <div class="modal-icon">🔑</div>
+    <h3 id="pw-title">Crea tu nueva contraseña</h3>
+    <input type="password" id="pw-new" placeholder="Nueva contraseña (mínimo 6 caracteres)" autocomplete="new-password">
+    <input type="password" id="pw-new2" placeholder="Repite la nueva contraseña" autocomplete="new-password">
+    <p id="pw-msg" class="backup-msg"></p>
+    <button type="button" id="pw-save">Guardar contraseña</button>
+  </div>
+</div>
 <div id="block-modal" class="modal-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="block-title" aria-describedby="block-text">
-  <div class="modal">
+  <div class="modal" id="block-box">
     <div class="modal-icon">⛔</div>
     <h3 id="block-title">Movimiento bloqueado</h3>
     <p id="block-text"></p>
@@ -471,6 +490,7 @@
           <button type="button" id="cl-login" class="backup-primary">Entrar</button>
           <button type="button" id="cl-signup" class="backup-secondary">Crear cuenta</button>
         </div>
+        <button type="button" id="cl-forgot" class="link-btn">¿Olvidaste tu contraseña?</button>
         <p id="cl-msg" class="backup-msg"></p>
       </div>
       <div id="cloud-in" class="cloud-in" style="display:none;">
@@ -482,6 +502,7 @@
           <button type="button" id="cl-sync">Sincronizar</button>
           <button type="button" id="cl-logout">Salir</button>
         </div>
+        <button type="button" id="cl-logout-all" class="link-btn danger-link">Cerrar sesión en todos los dispositivos</button>
       </div>
       <div id="cloud-na" class="cloud-user" style="display:none;">La nube no está disponible sin internet. Tus cambios se guardan en este dispositivo; abre la app con internet para sincronizar.</div>
     </div>
@@ -833,7 +854,9 @@ function showToast(text){
 }
 
 // Ventana de bloqueo en el centro de la pantalla: no se cierra hasta tocar "Entendido"
-function showBlock(title, text){
+function showBlock(title, text, ok){
+  document.getElementById('block-box').classList.toggle('modal-ok', !!ok);
+  document.querySelector('#block-box .modal-icon').textContent = ok ? '✅' : '⛔';
   document.getElementById('block-title').textContent = title;
   document.getElementById('block-text').textContent = text;
   document.getElementById('block-modal').classList.add('show');
@@ -1383,7 +1406,8 @@ async function firstMerge(){
   }
   const cloudCats = (await fetchAll('categorias', 'nombre,posicion', 'posicion')).map(c => c.nombre);
   const merged = cloudCats.concat(categories.filter(c => !cloudCats.includes(c)));
-  if(merged.length !== cloudCats.length){
+  // Solo unir categorias si este dispositivo trae datos propios (no las de fabrica)
+  if(entries.length && merged.length !== cloudCats.length){
     categories = merged;
     const err = await runOp({t:'cats'});
     if(err) throw err;
@@ -1455,7 +1479,8 @@ function authErrorText(err){
   if(/invalid login credentials/i.test(m)) return 'Correo o contraseña incorrectos.';
   if(/email not confirmed/i.test(m)) return 'Primero confirma tu correo: abre el enlace que te enviamos.';
   if(/password should be at least/i.test(m)) return 'La contraseña debe tener al menos 6 caracteres.';
-  if(/rate limit|too many/i.test(m)) return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+  if(/rate limit|too many|security purposes/i.test(m)) return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+  if(/different from the old password/i.test(m)) return 'La nueva contraseña debe ser distinta a la anterior.';
   if(isNetErr(err)) return 'Sin conexión a internet.';
   return 'No se pudo: ' + m;
 }
@@ -1467,6 +1492,26 @@ function readCredentials(){
   return { email, password };
 }
 
+let localSignOut = false;  // true cuando el cierre de sesion lo hizo este dispositivo
+
+function openPasswordModal(){
+  document.getElementById('pw-msg').textContent = '';
+  document.getElementById('pw-modal').classList.add('show');
+  document.getElementById('pw-new').focus();
+}
+
+// Borra la copia de los datos guardada en este dispositivo (la nube no se toca)
+function clearLocalCopy(){
+  entries = [];
+  saveEntries();
+  categories = [...DEFAULT_CATS];
+  saveCategories();
+  saveQueue([]);
+  localStorage.removeItem(SYNC_USER_KEY);
+  renderCategorySelect('');
+  render();
+}
+
 function initCloud(){
   if(!window.supabase || !window.supabase.createClient){ renderCloud(); return; }
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -1475,10 +1520,26 @@ function initCloud(){
 
   sb.auth.onAuthStateChange((event, session) => {
     const user = session ? session.user : null;
+    const hadUser = !!cloudUser;
     const changed = (user && user.id) !== (cloudUser && cloudUser.id);
     cloudUser = user;
+
+    // Enlace de "¿Olvidaste tu contraseña?": pedir la nueva contraseña
+    if(event === 'PASSWORD_RECOVERY') setTimeout(openPasswordModal, 0);
+
+    // La sesion se cerro desde otro dispositivo (o vencio): borrar la copia local de este dispositivo
+    if(event === 'SIGNED_OUT' && hadUser && !localSignOut){
+      setTimeout(() => {
+        clearLocalCopy();
+        showBlock('Sesión cerrada',
+          'Tu sesión se cerró en este dispositivo y se borró la copia de tus datos guardada aquí. ' +
+          'Tus datos siguen seguros en la nube: entra de nuevo con tu correo y contraseña para verlos.');
+      }, 0);
+    }
+    localSignOut = false;
+
     if(changed){
-      cloudState = user ? 'off' : 'off';
+      cloudState = 'off';
       renderCloud();
       if(user) setTimeout(flushAndPull, 0);
     }
@@ -1508,14 +1569,74 @@ function initCloud(){
 
   document.getElementById('cl-sync').addEventListener('click', () => flushAndPull());
 
+  // No salir si hay cambios que todavia no llegan a la nube
+  function pendingBlocksLogout(){
+    const pend = loadQueue().length;
+    if(pend > 0){
+      showBlock('Tienes cambios sin subir',
+        `Hay ${pend} cambio${pend === 1 ? '' : 's'} que todavía no llega${pend === 1 ? '' : 'n'} a la nube. ` +
+        'Conéctate a internet y toca Sincronizar antes de cerrar sesión, para no perderlos.');
+      return true;
+    }
+    return false;
+  }
+
   twoTapConfirm(document.getElementById('cl-logout'), '¿Salir?', async () => {
-    await sb.auth.signOut();
-    // Al volver a entrar se unira de nuevo lo local con la nube
-    localStorage.removeItem(SYNC_USER_KEY);
-    saveQueue([]);
+    if(pendingBlocksLogout()) return;
+    localSignOut = true;
+    await sb.auth.signOut({ scope: 'local' });
     cloudUser = null;
+    clearLocalCopy();
     cloudState = 'off';
     renderCloud();
+    showCloudMsg('Cerraste sesión en este dispositivo. Tus datos siguen en la nube.', true);
+  });
+
+  // Cierra la sesion en TODOS los dispositivos (por ejemplo, si pierdes el celular)
+  twoTapConfirm(document.getElementById('cl-logout-all'), '¿Seguro? Toca otra vez para cerrar en todos', async () => {
+    if(pendingBlocksLogout()) return;
+    localSignOut = true;
+    const { error } = await sb.auth.signOut({ scope: 'global' });
+    if(error && !/session/i.test(error.message || '')){
+      localSignOut = false;
+      showBlock('No se pudo cerrar sesión', authErrorText(error));
+      return;
+    }
+    cloudUser = null;
+    clearLocalCopy();
+    cloudState = 'off';
+    renderCloud();
+    showBlock('Sesión cerrada en todos los dispositivos',
+      'Listo. Los otros celulares o computadoras pierden el acceso a la nube en máximo 1 hora, ' +
+      'y cuando se conecten a internet se borrará la copia guardada en ellos. ' +
+      'Tus datos siguen seguros en la nube: entra de nuevo con tu correo y contraseña.', true);
+  });
+
+  // ¿Olvidaste tu contraseña?: envia un correo con un enlace para crear una nueva
+  document.getElementById('cl-forgot').addEventListener('click', async () => {
+    const email = document.getElementById('cl-email').value.trim();
+    if(!email){ showCloudMsg('Escribe tu correo arriba y vuelve a tocar "¿Olvidaste tu contraseña?".'); return; }
+    showCloudMsg('Enviando correo…', true);
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if(error){ showCloudMsg(authErrorText(error)); return; }
+    showCloudMsg(`Si ${email} tiene cuenta, te llegará un correo (revisa también spam). Ábrelo en este dispositivo y toca el enlace: la app te pedirá tu nueva contraseña.`, true);
+  });
+
+  document.getElementById('pw-save').addEventListener('click', async () => {
+    const p1 = document.getElementById('pw-new').value;
+    const p2 = document.getElementById('pw-new2').value;
+    const msg = document.getElementById('pw-msg');
+    msg.style.color = 'var(--danger)';
+    if(p1.length < 6){ msg.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+    if(p1 !== p2){ msg.textContent = 'Las dos contraseñas no son iguales.'; return; }
+    msg.style.color = 'var(--income)';
+    msg.textContent = 'Guardando…';
+    const { error } = await sb.auth.updateUser({ password: p1 });
+    if(error){ msg.style.color = 'var(--danger)'; msg.textContent = authErrorText(error); return; }
+    document.getElementById('pw-modal').classList.remove('show');
+    document.getElementById('pw-new').value = document.getElementById('pw-new2').value = '';
+    msg.textContent = '';
+    showBlock('Contraseña actualizada', 'Listo. Desde ahora entra con tu nueva contraseña en todos tus dispositivos.', true);
   });
 
   window.addEventListener('online', () => flushAndPull());
