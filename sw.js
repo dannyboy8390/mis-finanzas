@@ -1,6 +1,9 @@
 // Cambia este numero cada vez que subas una version nueva
-const CACHE_NAME = 'mis-finanzas-v22';
+const CACHE_NAME = 'mis-finanzas-v23';
+// Cache aparte para herramientas externas que no cambian (no se borra al actualizar la app)
+const LIBS_CACHE = 'mis-finanzas-libs';
 const SUPABASE_SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js';
+const XLSX_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -20,17 +23,33 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== LIBS_CACHE).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-// Primero intenta internet (para recibir actualizaciones); si no hay conexion, usa la copia guardada.
-// Las llamadas a la nube (Supabase) y otros sitios pasan directo, sin cache.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = event.request.url;
+
+  // Herramienta de Excel: se descarga la primera vez y luego se usa la copia guardada (funciona sin internet)
+  if (url === XLSX_LIB) {
+    event.respondWith(
+      caches.open(LIBS_CACHE).then((cache) =>
+        cache.match(event.request).then((cached) =>
+          cached || fetch(event.request).then((response) => {
+            cache.put(event.request, response.clone());
+            return response;
+          })
+        )
+      )
+    );
+    return;
+  }
+
+  // Primero intenta internet (para recibir actualizaciones); si no hay conexion, usa la copia guardada.
+  // Las llamadas a la nube (Supabase) y otros sitios pasan directo, sin cache.
   const sameOrigin = new URL(url).origin === self.location.origin;
   if (!sameOrigin && url !== SUPABASE_SDK) return;
   event.respondWith(

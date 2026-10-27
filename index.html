@@ -320,6 +320,9 @@
   .restore-confirm p{margin:0 0 10px;}
   .backup-msg{font-size:13px;margin:10px 0 0;}
   .backup-msg:empty{display:none;}
+  .excel-btn{width:100%;margin-top:8px;padding:10px;border-radius:4px;border:1px solid #1D6F42;background:#fff;color:#1D6F42;font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
+  .excel-btn:disabled{opacity:.6;cursor:wait;}
+  .excel-help{font-size:12px;margin:6px 0 0;}
 
   .cloud-card{background:var(--card);border:1px solid var(--paper-line);border-radius:6px;padding:14px 16px;margin-bottom:20px;}
   .cloud-card h2{font-family:'Spectral',serif;font-size:18px;font-weight:600;margin:0 0 8px;}
@@ -588,6 +591,8 @@
         <button type="button" class="backup-dl backup-primary">Descargar respaldo</button>
         <button type="button" id="restore-btn" class="backup-secondary">Restaurar respaldo</button>
       </div>
+      <button type="button" id="excel-btn" class="excel-btn">📊 Descargar en Excel (.xlsx)</button>
+      <p class="backup-help excel-help">Reporte para revisar en Excel o Google Sheets: Movimientos, Resumen, Por mes y Gastos por categoría. No sirve para restaurar.</p>
       <input type="file" id="restore-file" style="display:none;">
       <div id="restore-confirm" class="restore-confirm" style="display:none;">
         <p id="restore-text"></p>
@@ -1228,6 +1233,147 @@ function downloadBackup(){
   showBackupMsg(`Respaldo descargado (${entries.length} movimientos). Búscalo en Descargas y guárdalo en Google Drive o envíatelo por WhatsApp.`, true);
 }
 document.querySelectorAll('.backup-dl').forEach(b => b.addEventListener('click', downloadBackup));
+
+// ----- Reporte en Excel (.xlsx) -----
+// La herramienta (SheetJS) solo se descarga la primera vez que se toca el boton
+const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+function loadXlsx(){
+  if(window.XLSX) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = XLSX_URL;
+    s.onload = () => window.XLSX ? resolve() : reject(new Error('sin XLSX'));
+    s.onerror = () => { s.remove(); reject(new Error('no se pudo cargar')); };
+    document.head.appendChild(s);
+  });
+}
+
+// Fecha AAAA-MM-DD a numero de fecha de Excel (sin problemas de zona horaria)
+function excelDate(iso){
+  const [y, m, d] = iso.split('-').map(Number);
+  return (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000;
+}
+
+function buildWorkbook(){
+  const X = window.XLSX;
+  const MONEY = '"$"#,##0.00;-"$"#,##0.00';
+  const DATE = 'dd/mm/yyyy';
+  const tipo = {ingreso: 'Ingreso', gasto: 'Gasto', transferencia: 'Transferencia'};
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+
+  // Da formato de dinero / fecha a columnas (desde la fila 2)
+  const format = (ws, cols, z) => {
+    const range = X.utils.decode_range(ws['!ref']);
+    for(let r = 1; r <= range.e.r; r++) for(const c of cols){
+      const cell = ws[X.utils.encode_cell({r, c})];
+      if(cell && typeof cell.v === 'number') cell.z = z;
+    }
+  };
+
+  // 1) Movimientos
+  let disp = 0;
+  const mov = [['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto', 'Banco', 'Hacia (transferencia)', 'Saldo disponible después']];
+  sorted.forEach(e => {
+    disp += disponibleDelta(e);
+    const banco = e.account || (e.type === 'ingreso' ? DEFAULT_BANK : '');
+    mov.push([excelDate(e.date), tipo[e.type] || e.type, e.type === 'transferencia' ? 'Transferencia' : e.category,
+      e.desc || '', e.amount, banco, e.toAccount || '', Math.round(disp * 100) / 100]);
+  });
+  const wsMov = X.utils.aoa_to_sheet(mov);
+  format(wsMov, [0], DATE); format(wsMov, [4, 7], MONEY);
+  wsMov['!cols'] = [{wch: 12}, {wch: 14}, {wch: 30}, {wch: 28}, {wch: 12}, {wch: 18}, {wch: 20}, {wch: 22}];
+
+  // 2) Resumen
+  const bal = bankBalances();
+  const available = BANKS.filter(b => b !== SAVINGS_BANK);
+  const disponibleBancos = available.reduce((s, b) => s + bal[b], 0);
+  const res = [['Concepto', 'Monto']];
+  available.forEach(b => res.push([b, bal[b]]));
+  res.push(['Disponible en bancos', disponibleBancos]);
+  res.push([`Ahorro programado (${SAVINGS_BANK})`, bal[SAVINGS_BANK]]);
+  res.push(['Total en bancos', disponibleBancos + bal[SAVINGS_BANK]]);
+  res.push([]);
+  res.push(['SALDO DISPONIBLE', Math.round(disp * 100) / 100]);
+  res.push(['AHORRO PROGRAMADO', bal[SAVINGS_BANK]]);
+  res.push([]);
+  res.push(['Reporte generado', new Date().toLocaleString('es-EC')]);
+  res.push(['Movimientos incluidos', entries.length]);
+  const wsRes = X.utils.aoa_to_sheet(res);
+  for(let r = 1; r <= 9; r++){
+    const cell = wsRes[X.utils.encode_cell({r, c: 1})];
+    if(cell && typeof cell.v === 'number') cell.z = MONEY;
+  }
+  wsRes['!cols'] = [{wch: 36}, {wch: 18}];
+
+  // 3) Por mes
+  const months = {};
+  sorted.forEach(e => {
+    const m = e.date.slice(0, 7);
+    months[m] = months[m] || {ing: 0, gas: 0, aho: 0};
+    if(e.type === 'ingreso') months[m].ing += e.amount;
+    if(e.type === 'gasto') months[m].gas += e.amount;
+    // movimiento del ahorro programado en el mes
+    const acc = e.account || (e.type === 'ingreso' ? DEFAULT_BANK : '');
+    if(e.type === 'ingreso' && acc === SAVINGS_BANK) months[m].aho += e.amount;
+    if(e.type === 'gasto' && acc === SAVINGS_BANK) months[m].aho -= e.amount;
+    if(e.type === 'transferencia' && e.toAccount === SAVINGS_BANK) months[m].aho += e.amount;
+    if(e.type === 'transferencia' && e.account === SAVINGS_BANK) months[m].aho -= e.amount;
+  });
+  const pm = [['Mes', 'Ingresos', 'Gastos', 'Neto (ingresos - gastos)', 'Movido al ahorro programado']];
+  Object.keys(months).sort().forEach(m => {
+    const v = months[m];
+    pm.push([m, v.ing, v.gas, v.ing - v.gas, v.aho]);
+  });
+  const wsPm = X.utils.aoa_to_sheet(pm);
+  format(wsPm, [1, 2, 3, 4], MONEY);
+  wsPm['!cols'] = [{wch: 10}, {wch: 14}, {wch: 14}, {wch: 24}, {wch: 28}];
+
+  // 4) Gastos por categoria (por mes)
+  const cat = {};
+  sorted.filter(e => e.type === 'gasto').forEach(e => {
+    const m = e.date.slice(0, 7);
+    cat[m] = cat[m] || {};
+    cat[m][e.category] = cat[m][e.category] || {n: 0, t: 0};
+    cat[m][e.category].n++;
+    cat[m][e.category].t += e.amount;
+  });
+  const gc = [['Mes', 'Categoría', 'Veces', 'Total', '% del gasto del mes']];
+  Object.keys(cat).sort().reverse().forEach(m => {
+    const totalMes = Object.values(cat[m]).reduce((s, x) => s + x.t, 0);
+    Object.entries(cat[m]).sort((a, b) => b[1].t - a[1].t).forEach(([c, x]) => {
+      gc.push([m, c, x.n, x.t, totalMes ? x.t / totalMes : 0]);
+    });
+  });
+  const wsGc = X.utils.aoa_to_sheet(gc);
+  format(wsGc, [3], MONEY); format(wsGc, [4], '0%');
+  wsGc['!cols'] = [{wch: 10}, {wch: 32}, {wch: 8}, {wch: 14}, {wch: 20}];
+
+  const wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, wsMov, 'Movimientos');
+  X.utils.book_append_sheet(wb, wsRes, 'Resumen');
+  X.utils.book_append_sheet(wb, wsPm, 'Por mes');
+  X.utils.book_append_sheet(wb, wsGc, 'Gastos por categoria');
+  return wb;
+}
+
+document.getElementById('excel-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('excel-btn');
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Preparando Excel…';
+  try{
+    await loadXlsx();
+    const name = `finanzas-daniel-${todayISO()}.xlsx`;
+    window.XLSX.writeFile(buildWorkbook(), name, {compression: true});
+    showBackupMsg(`Excel descargado (${entries.length} movimientos): ${name}. Búscalo en Descargas.`, true);
+  }catch(err){
+    console.error(err);
+    showBackupMsg('No se pudo crear el Excel. La primera vez necesitas internet; conéctate y vuelve a intentar.');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+});
 
 function isValidEntry(e){
   return e && typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)
