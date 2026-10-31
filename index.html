@@ -387,7 +387,12 @@
   .danger-link.armed{font-weight:700;}
 
   /* Gastos principales: lista simple, sin barras */
-  #breakdown-body{border:1px solid var(--paper-line);border-radius:6px;background:#fff;overflow:hidden;}
+  #breakdown-body{border:1px solid var(--paper-line);border-radius:6px;background:#fff;overflow-x:hidden;overflow-y:auto;
+    scrollbar-width:thin;scrollbar-color:#000 #E5E5E5;}
+  /* Barra de desplazamiento negra (se ve cuando hay mas de 5 filas) */
+  #breakdown-body::-webkit-scrollbar{width:8px;}
+  #breakdown-body::-webkit-scrollbar-track{background:#E5E5E5;border-radius:0 6px 6px 0;}
+  #breakdown-body::-webkit-scrollbar-thumb{background:#000;border-radius:4px;}
   #breakdown-body:empty{display:none;}
   .bd-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:10px 14px;border-bottom:1px solid var(--paper-line);}
   .bd-row:last-child{border-bottom:none;}
@@ -432,7 +437,7 @@
     <div>
       <h1 style="color:#C62828;text-transform:uppercase;">FINANZAS DANIEL</h1>
     </div>
-    <div id="hoy"></div>
+    <div id="hoy" style="display:none;"></div>
   </header>
 
   <div id="loading">Cargando tus movimientos...</div>
@@ -539,7 +544,6 @@
     <div class="banks-card">
       <div class="ledger-head"><h2>Saldos por banco y efectivo</h2></div>
       <div class="banks" id="banks"></div>
-      <p class="banks-note">Ingresos que entraron a cada banco, menos los gastos pagados desde ahí, más o menos lo que transferiste entre ellos. Para sacar dinero del cajero, haz una transferencia de tu banco a "Dinero en efectivo"; los gastos en efectivo elígelos en "Pagado desde". Todo lo que entra a Coop Andalucía es ahorro programado: no cuenta en tu saldo disponible.</p>
       <p class="banks-note" id="banks-unassigned" style="color:var(--accent);"></p>
     </div>
 
@@ -1091,7 +1095,20 @@ function renderBreakdown(expenseEntries, totalExpense){
     `;
     body.appendChild(row);
   });
+  limitBreakdownRows();
 }
+
+// Gastos principales: solo 5 filas a la vista; el resto con la barra de desplazamiento
+const BREAKDOWN_VISIBLE_ROWS = 5;
+function limitBreakdownRows(){
+  const body = document.getElementById('breakdown-body');
+  const rows = body.querySelectorAll('.bd-row');
+  if(rows.length <= BREAKDOWN_VISIBLE_ROWS){ body.style.maxHeight = ''; return; }
+  const last = rows[BREAKDOWN_VISIBLE_ROWS - 1];
+  const h = last.offsetTop + last.offsetHeight - rows[0].offsetTop;
+  body.style.maxHeight = h > 0 ? (h + 2) + 'px' : (BREAKDOWN_VISIBLE_ROWS * 42) + 'px';
+}
+window.addEventListener('resize', limitBreakdownRows);
 
 function escapeHtml(str){
   const div = document.createElement('div');
