@@ -163,13 +163,14 @@
   #error-msg{font-size:12px;color:var(--danger);margin:0 0 8px;display:none;}
   button#add-btn{
     width:100%;
-    padding:10px;
+    min-height:52px;
+    padding:14px;
     background:var(--ink);
     color:var(--paper);
     border:none;
-    border-radius:4px;
-    font-size:14px;
-    font-weight:500;
+    border-radius:6px;
+    font-size:16px;
+    font-weight:600;
     cursor:pointer;
     font-family:'Inter',sans-serif;
   }
@@ -557,7 +558,6 @@
 
     <div class="ledger-head">
       <h2>Movimientos</h2>
-      <button id="reset-btn">Borrar todo</button>
     </div>
     <div class="filter-bar">
       <div class="toggle-row">
@@ -1170,12 +1170,6 @@ document.getElementById('entry-form').addEventListener('submit', async (ev) => {
   document.getElementById('f-date').value = todayISO();
 });
 
-twoTapConfirm(document.getElementById('reset-btn'), 'Toca otra vez para borrar TODO', async () => {
-  entries = [];
-  await saveEntries();
-  render();
-  cloudQueue({t:'delall'});
-});
 
 // ----- Respaldo: descargar y restaurar -----
 const BACKUP_REMIND_DAYS = 7;
