@@ -97,6 +97,8 @@
   .bank.subtotal{background:var(--paper);}
   .bank.subtotal .label, .bank.savings-row .label{font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);}
   .bank.savings-row{background:var(--accent-bg);}
+  .bank.cash-row{background:var(--income-bg);}
+  .bank.cash-row .label{font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:var(--income);font-weight:600;}
   .bank.savings-row .label{color:var(--accent);font-weight:600;}
   .bank .label small{display:block;font-size:11px;text-transform:none;letter-spacing:0;font-weight:400;}
 
@@ -535,9 +537,9 @@
     </div>
 
     <div class="banks-card">
-      <div class="ledger-head"><h2>Saldos por banco</h2></div>
+      <div class="ledger-head"><h2>Saldos por banco y efectivo</h2></div>
       <div class="banks" id="banks"></div>
-      <p class="banks-note">Ingresos que entraron a cada banco, menos los gastos pagados desde ahí, más o menos lo que transferiste entre ellos. Todo lo que entra a Coop Andalucía es ahorro programado: no cuenta en tu saldo disponible.</p>
+      <p class="banks-note">Ingresos que entraron a cada banco, menos los gastos pagados desde ahí, más o menos lo que transferiste entre ellos. Para sacar dinero del cajero, haz una transferencia de tu banco a "Dinero en efectivo"; los gastos en efectivo elígelos en "Pagado desde". Todo lo que entra a Coop Andalucía es ahorro programado: no cuenta en tu saldo disponible.</p>
       <p class="banks-note" id="banks-unassigned" style="color:var(--accent);"></p>
     </div>
 
@@ -795,10 +797,14 @@ function showFormMsg(text, ok){
 }
 
 // ----- Bancos: los ingresos entran a un banco y luego se reparten con transferencias -----
-const BANKS = ['Banco Guayaquil', 'Produbanco', 'Banco Pichincha', 'Coop Andalucía'];
+// Efectivo en el bolsillo: funciona como una cuenta mas (sí cuenta en el saldo disponible)
+const CASH = 'Dinero en efectivo';
+const BANKS = ['Banco Guayaquil', 'Produbanco', 'Banco Pichincha', 'Coop Andalucía', CASH];
 const DEFAULT_BANK = 'Banco Guayaquil';
 // Todo lo que entra a este banco es ahorro programado: no cuenta en el saldo disponible
 const SAVINGS_BANK = 'Coop Andalucía';
+// Solo bancos disponibles (sin ahorro ni efectivo)
+const REAL_BANKS = BANKS.filter(b => b !== SAVINGS_BANK && b !== CASH);
 
 // Cuanto cambia el saldo disponible con un movimiento (el ahorro programado no cuenta)
 function disponibleDelta(e){
@@ -884,18 +890,20 @@ fFrom.addEventListener('change', updateAvailHint);
 function renderBanks(){
   const bal = bankBalances();
   const total = BANKS.reduce((s, b) => s + bal[b], 0);
-  const available = BANKS.filter(b => b !== SAVINGS_BANK);
-  const disponible = available.reduce((s, b) => s + bal[b], 0);
+  const disponible = REAL_BANKS.reduce((s, b) => s + bal[b], 0);
+  const color = (value, cls) => value < 0 ? 'var(--danger)'
+    : cls === 'savings-row' ? 'var(--accent)' : cls === 'cash-row' ? 'var(--income)' : 'var(--ink)';
   const row = (label, value, cls, sub) => `
     <div class="bank${cls ? ' ' + cls : ''}">
       <div class="label">${escapeHtml(label)}${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</div>
-      <div class="value" style="color:${value < 0 ? 'var(--danger)' : cls === 'savings-row' ? 'var(--accent)' : 'var(--ink)'}">${fmt(value)}</div>
+      <div class="value" style="color:${color(value, cls)}">${fmt(value)}</div>
     </div>`;
   document.getElementById('banks').innerHTML =
-    available.map(b => row(b, bal[b])).join('') +
+    REAL_BANKS.map(b => row(b, bal[b])).join('') +
     row('Disponible en bancos', disponible, 'subtotal') +
+    row('💵 Dinero en efectivo', bal[CASH], 'cash-row', 'En tu bolsillo · disponible') +
     row('Ahorro programado', bal[SAVINGS_BANK], 'savings-row', SAVINGS_BANK + ' · no disponible') +
-    row('Total en bancos', total, 'total');
+    row('Total (bancos + efectivo)', total, 'total');
   const sinBanco = unassignedExpenses();
   document.getElementById('banks-unassigned').textContent = cents(sinBanco) > 0
     ? `Hay ${fmt(sinBanco)} en gastos antiguos sin banco asignado: no se restan de ningún banco.`
@@ -1285,13 +1293,13 @@ function buildWorkbook(){
 
   // 2) Resumen
   const bal = bankBalances();
-  const available = BANKS.filter(b => b !== SAVINGS_BANK);
-  const disponibleBancos = available.reduce((s, b) => s + bal[b], 0);
+  const disponibleBancos = REAL_BANKS.reduce((s, b) => s + bal[b], 0);
   const res = [['Concepto', 'Monto']];
-  available.forEach(b => res.push([b, bal[b]]));
+  REAL_BANKS.forEach(b => res.push([b, bal[b]]));
   res.push(['Disponible en bancos', disponibleBancos]);
+  res.push([CASH, bal[CASH]]);
   res.push([`Ahorro programado (${SAVINGS_BANK})`, bal[SAVINGS_BANK]]);
-  res.push(['Total en bancos', disponibleBancos + bal[SAVINGS_BANK]]);
+  res.push(['Total (bancos + efectivo)', disponibleBancos + bal[CASH] + bal[SAVINGS_BANK]]);
   res.push([]);
   res.push(['SALDO DISPONIBLE', Math.round(disp * 100) / 100]);
   res.push(['AHORRO PROGRAMADO', bal[SAVINGS_BANK]]);

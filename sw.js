@@ -1,5 +1,5 @@
 // Cambia este numero cada vez que subas una version nueva
-const CACHE_NAME = 'mis-finanzas-v24';
+const CACHE_NAME = 'mis-finanzas-v25';
 // Cache aparte para herramientas externas que no cambian (no se borra al actualizar la app)
 const LIBS_CACHE = 'mis-finanzas-libs';
 const SUPABASE_SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js';
